@@ -1,9 +1,18 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { BodyPartKind, SegmentationResult } from "@/types/segmentation";
-import type { AnimatableProp, EasingKind, Keyframes, AnimationPreset } from "../types/animation";
+import type {
+  AnimatableProp,
+  EasingKind,
+  Keyframes,
+  AnimationPreset,
+} from "../types/animation";
 import { ANIMATABLE_PROPS } from "../types/animation";
-import { sampleProp, upsertKeyframe, removeKeyframeAt } from "@/services/animation/sampling";
+import {
+  sampleProp,
+  upsertKeyframe,
+  removeKeyframeAt,
+} from "@/services/animation/sampling";
 
 export type ToolId =
   | "select"
@@ -17,7 +26,14 @@ export type ToolId =
   | "magic"
   | "camera";
 
-export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "add" | "lighten" | "darken";
+export type BlendMode =
+  | "normal"
+  | "multiply"
+  | "screen"
+  | "overlay"
+  | "add"
+  | "lighten"
+  | "darken";
 
 export interface Layer {
   id: string;
@@ -89,7 +105,12 @@ interface EditorState {
   setZoom: (z: number) => void;
   setPan: (p: { x: number; y: number }) => void;
   select: (ids: string[]) => void;
-  addImageLayer: (name: string, src: string, width: number, height: number) => void;
+  addImageLayer: (
+    name: string,
+    src: string,
+    width: number,
+    height: number,
+  ) => void;
   updateLayer: (id: string, patch: Partial<Layer>) => void;
   removeLayers: (ids: string[]) => void;
   duplicateLayers: (ids: string[]) => void;
@@ -137,7 +158,11 @@ interface EditorState {
     value: number,
     easing?: EasingKind,
   ) => void;
-  removeKeyframe: (layerId: string, prop: AnimatableProp, frame: number) => void;
+  removeKeyframe: (
+    layerId: string,
+    prop: AnimatableProp,
+    frame: number,
+  ) => void;
   clearKeyframes: (layerId: string, prop?: AnimatableProp) => void;
   setKeyframeEasing: (
     layerId: string,
@@ -145,7 +170,11 @@ interface EditorState {
     frame: number,
     easing: EasingKind,
   ) => void;
-  applyAnimationPreset: (layerId: string, preset: AnimationPreset, startFrame?: number) => void;
+  applyAnimationPreset: (
+    layerId: string,
+    preset: AnimationPreset,
+    startFrame?: number,
+  ) => void;
 
   undo: () => void;
   redo: () => void;
@@ -268,7 +297,9 @@ export const useEditor = create<EditorState>()(
                     kfs[prop] = upsertKeyframe(kfs[prop], {
                       frame,
                       value: patch[prop] as number,
-                      easing: kfs[prop]?.find((k) => k.frame === frame)?.easing ?? "easeInOutQuad",
+                      easing:
+                        kfs[prop]?.find((k) => k.frame === frame)?.easing ??
+                        "easeInOutQuad",
                     });
                     changed = true;
                   }
@@ -341,7 +372,9 @@ export const useEditor = create<EditorState>()(
             const list = l.keyframes?.[prop];
             if (!list) return l;
             const kfs: Keyframes = { ...l.keyframes };
-            kfs[prop] = list.map((k) => (k.frame === frame ? { ...k, easing } : k));
+            kfs[prop] = list.map((k) =>
+              k.frame === frame ? { ...k, easing } : k,
+            );
             return { ...l, keyframes: kfs };
           }),
           updatedAt: Date.now(),
@@ -359,19 +392,28 @@ export const useEditor = create<EditorState>()(
             layers: s.project.layers.map((l) => {
               if (l.id !== layerId) return l;
               const kfs: Keyframes = { ...(l.keyframes ?? {}) };
-              (Object.keys(preset.tracks) as AnimatableProp[]).forEach((prop) => {
-                const track = preset.tracks[prop]!;
-                // Rest value = the layer's current static value for that prop.
-                // For x/y/rotation the preset values are additive deltas;
-                // for scale* / opacity / anchor* they are absolute.
-                const isDelta = prop === "x" || prop === "y" || prop === "rotation";
-                const rest = l[prop] as number;
-                track.forEach((entry) => {
-                  const frame = Math.round(start + entry.t * preset.durationFrames);
-                  const value = isDelta ? rest + entry.value : entry.value;
-                  kfs[prop] = upsertKeyframe(kfs[prop], { frame, value, easing: entry.easing });
-                });
-              });
+              (Object.keys(preset.tracks) as AnimatableProp[]).forEach(
+                (prop) => {
+                  const track = preset.tracks[prop]!;
+                  // Rest value = the layer's current static value for that prop.
+                  // For x/y/rotation the preset values are additive deltas;
+                  // for scale* / opacity / anchor* they are absolute.
+                  const isDelta =
+                    prop === "x" || prop === "y" || prop === "rotation";
+                  const rest = l[prop] as number;
+                  track.forEach((entry) => {
+                    const frame = Math.round(
+                      start + entry.t * preset.durationFrames,
+                    );
+                    const value = isDelta ? rest + entry.value : entry.value;
+                    kfs[prop] = upsertKeyframe(kfs[prop], {
+                      frame,
+                      value,
+                      easing: entry.easing,
+                    });
+                  });
+                },
+              );
               return { ...l, keyframes: kfs };
             }),
             updatedAt: Date.now(),
@@ -404,7 +446,13 @@ export const useEditor = create<EditorState>()(
         const src = project.layers.find((l) => l.id === id);
         if (!src) return;
         const nid = uid();
-        dupes.push({ ...src, id: nid, name: src.name + " copy", x: src.x + 20, y: src.y + 20 });
+        dupes.push({
+          ...src,
+          id: nid,
+          name: src.name + " copy",
+          x: src.x + 20,
+          y: src.y + 20,
+        });
         newOrder.push(nid);
       });
       set({
@@ -422,7 +470,9 @@ export const useEditor = create<EditorState>()(
       set((s) => ({
         project: {
           ...s.project,
-          layers: s.project.layers.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)),
+          layers: s.project.layers.map((l) =>
+            l.id === id ? { ...l, visible: !l.visible } : l,
+          ),
         },
       })),
 
@@ -430,7 +480,9 @@ export const useEditor = create<EditorState>()(
       set((s) => ({
         project: {
           ...s.project,
-          layers: s.project.layers.map((l) => (l.id === id ? { ...l, locked: !l.locked } : l)),
+          layers: s.project.layers.map((l) =>
+            l.id === id ? { ...l, locked: !l.locked } : l,
+          ),
         },
       })),
 
@@ -438,7 +490,9 @@ export const useEditor = create<EditorState>()(
       set((s) => ({
         project: {
           ...s.project,
-          layers: s.project.layers.map((l) => (l.id === id ? { ...l, name } : l)),
+          layers: s.project.layers.map((l) =>
+            l.id === id ? { ...l, name } : l,
+          ),
         },
       })),
 
@@ -485,7 +539,9 @@ export const useEditor = create<EditorState>()(
           ...s.project,
           layers: [
             group,
-            ...s.project.layers.map((l) => (ids.includes(l.id) ? { ...l, parentId: gid } : l)),
+            ...s.project.layers.map((l) =>
+              ids.includes(l.id) ? { ...l, parentId: gid } : l,
+            ),
           ],
           order: [...s.project.order, gid],
         },
@@ -494,7 +550,7 @@ export const useEditor = create<EditorState>()(
       return gid;
     },
 
-    applyMagicCut: (sourceLayerId, result, cutouts) => {
+    applyMagicCut: (sourceLayerId, _result, cutouts) => {
       get().pushHistory();
       const state = get();
       const source = state.project.layers.find((l) => l.id === sourceLayerId);
@@ -554,7 +610,9 @@ export const useEditor = create<EditorState>()(
         project: {
           ...s.project,
           layers: [
-            ...s.project.layers.map((l) => (l.id === sourceLayerId ? { ...l, visible: false } : l)),
+            ...s.project.layers.map((l) =>
+              l.id === sourceLayerId ? { ...l, visible: false } : l,
+            ),
             group,
             ...partLayers,
           ],
@@ -576,8 +634,10 @@ export const useEditor = create<EditorState>()(
 
     play: () => set({ playing: true }),
     pause: () => set({ playing: false }),
-    setFrame: (f) => set((s) => ({ currentFrame: Math.max(0, Math.min(s.totalFrames, f)) })),
-    setTimelineZoom: (z) => set({ timelineZoom: Math.max(0.25, Math.min(4, z)) }),
+    setFrame: (f) =>
+      set((s) => ({ currentFrame: Math.max(0, Math.min(s.totalFrames, f)) })),
+    setTimelineZoom: (z) =>
+      set({ timelineZoom: Math.max(0.25, Math.min(4, z)) }),
 
     undo: () => {
       const { history, project } = get();
@@ -588,7 +648,12 @@ export const useEditor = create<EditorState>()(
         order: [...project.order],
       };
       set({
-        project: { ...project, layers: prev.layers, order: prev.order, updatedAt: Date.now() },
+        project: {
+          ...project,
+          layers: prev.layers,
+          order: prev.order,
+          updatedAt: Date.now(),
+        },
         history: {
           past: history.past.slice(0, -1),
           future: [currentSnap, ...history.future].slice(0, 100),
@@ -604,7 +669,12 @@ export const useEditor = create<EditorState>()(
         order: [...project.order],
       };
       set({
-        project: { ...project, layers: next.layers, order: next.order, updatedAt: Date.now() },
+        project: {
+          ...project,
+          layers: next.layers,
+          order: next.order,
+          updatedAt: Date.now(),
+        },
         history: {
           past: [...history.past, currentSnap].slice(-100),
           future: history.future.slice(1),

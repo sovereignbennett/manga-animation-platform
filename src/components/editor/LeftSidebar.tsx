@@ -23,7 +23,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { useEditor } from "@/store/editorStore";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 import { MagicCutPanel } from "./MagicCutPanel";
 
 type PanelId =

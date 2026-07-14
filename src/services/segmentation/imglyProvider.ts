@@ -9,7 +9,7 @@ import type {
   SegmentationOptions,
   SegmentationResult,
   Mask,
-} from "@/types/segmentation";
+} from "../../types/segmentation";
 
 type RemoveBgFn = (src: string | Blob, cfg?: Record<string, unknown>) => Promise<Blob>;
 let removeBgFn: RemoveBgFn | null = null;

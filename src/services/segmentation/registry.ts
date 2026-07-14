@@ -11,7 +11,7 @@ import type {
   SegmentationProvider,
   SegmentationOptions,
   SegmentationResult,
-} from "@/types/segmentation";
+} from "../../types/segmentation";
 
 export type SegmentationStrategy = "foreground" | "parts" | "hybrid";
 

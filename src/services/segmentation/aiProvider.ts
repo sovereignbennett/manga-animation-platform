@@ -16,9 +16,19 @@ import type {
   SegmentationOptions,
   SegmentationResult,
   SegmentedPart,
-} from "@/types/segmentation";
-import { detectBodyParts } from "@/lib/segmentation.functions";
-
+} from "../../types/segmentation";
+const detectBodyParts = async (_input: {
+  data: {
+    imageDataUrl: string;
+    imageWidth: number;
+    imageHeight: number;
+  };
+}): Promise<{
+  parts: SegmentedPart[];
+  modelTag: string;
+}> => {
+  throw new Error("Segmentation backend not implemented yet.");
+};
 async function loadImageDims(src: string): Promise<{ w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -37,7 +47,10 @@ export const aiProvider: SegmentationProvider = {
     producesPartMasks: false, // bboxes only, for now
     costTier: "cheap",
   },
-  async segment(imageSrc, opts: SegmentationOptions = {}): Promise<SegmentationResult> {
+  async segment(
+    imageSrc,
+    opts: SegmentationOptions = {},
+  ): Promise<SegmentationResult> {
     const t0 = performance.now();
     opts.onProgress?.(0.1, "Uploading to AI");
 
@@ -51,14 +64,16 @@ export const aiProvider: SegmentationProvider = {
     if (opts.signal?.aborted) throw new Error("aborted");
 
     opts.onProgress?.(0.9, "Composing parts");
-    const parts: SegmentedPart[] = res.parts.map((p, i: number) => ({
-      id: `part_${Date.now().toString(36)}_${i}`,
-      kind: p.kind,
-      label: p.label,
-      confidence: p.confidence,
-      bbox: p.bbox,
-      suggestedPivot: p.suggestedPivot,
-    }));
+    const parts: SegmentedPart[] = res.parts.map(
+      (p: SegmentedPart, i: number) => ({
+        id: `part_${Date.now().toString(36)}_${i}`,
+        kind: p.kind,
+        label: p.label,
+        confidence: p.confidence,
+        bbox: p.bbox,
+        suggestedPivot: p.suggestedPivot,
+      }),
+    );
 
     opts.onProgress?.(1, "Done");
     return {

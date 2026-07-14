@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { useEditor, type ToolId } from "@/store/editorStore";
-
 const TOOL_KEYS: Record<string, ToolId> = {
   v: "select",
   m: "move",
