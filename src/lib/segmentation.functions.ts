@@ -1,14 +1,3 @@
-/**
- * AI body-part detection via Lovable AI Gateway (Gemini vision).
- *
- * Returns bboxes per body-part with confidence. This is the AI seam:
- * swap the model or provider here, keep the response contract.
- *
- * TODO(model): move to a segmentation model that returns per-pixel masks
- * (SAM2 / YOLOv8-seg). Populate `mask` on each part and set the
- * aiProvider capability `producesPartMasks: true`.
- */
-
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { BodyPartKind } from "@/types/segmentation";
@@ -83,8 +72,8 @@ Rules:
 export const detectBodyParts = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }) => {
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) throw new Error("API_KEY is not configured");
 
     const jsonSchema = {
       type: "object",
@@ -145,11 +134,11 @@ export const detectBodyParts = createServerFn({ method: "POST" })
       },
     };
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Lovable-API-Key": apiKey,
+        "API-Key": apiKey,
       },
       body: JSON.stringify(body),
     });
