@@ -37,6 +37,34 @@ function contentToLayerLocal(layer: Layer, p: Pt): Pt {
   };
 }
 
+function layerLocalToContent(layer: Layer, p: Pt): Pt {
+  const lx = (p.x - layer.anchorX * layer.width) * (layer.scaleX || 1);
+  const ly = (p.y - layer.anchorY * layer.height) * (layer.scaleY || 1);
+  const r = (layer.rotation * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  return {
+    x: layer.x + lx * cos - ly * sin,
+    y: layer.y + lx * sin + ly * cos,
+  };
+}
+
+function layerProbePoints(layer: Layer): Pt[] {
+  const w = layer.width;
+  const h = layer.height;
+  return [
+    { x: w / 2, y: h / 2 },
+    { x: 0, y: 0 },
+    { x: w, y: 0 },
+    { x: w, y: h },
+    { x: 0, y: h },
+    { x: w / 2, y: 0 },
+    { x: w, y: h / 2 },
+    { x: w / 2, y: h },
+    { x: 0, y: h / 2 },
+  ].map((p) => layerLocalToContent(layer, p));
+}
+
 /** Test whether content-space point p is inside layer's oriented bounding box. */
 function hitTest(layer: Layer, p: Pt): boolean {
   if (
@@ -83,6 +111,11 @@ function pointInPolygon(p: Pt, poly: Pt[]): boolean {
   return inside;
 }
 
+function polygonIntersectsLayer(poly: Pt[], layer: Layer): boolean {
+  if (layerProbePoints(layer).some((p) => pointInPolygon(p, poly))) return true;
+  return poly.some((p) => hitTest(layer, p));
+}
+
 export interface CanvasToolsApi {
   onOverlayDraw?: (draw: (ctx: CanvasRenderingContext2D) => void) => void;
 }
@@ -116,6 +149,49 @@ export function useCanvasTools(
     let startLayer: Layer | null = null;
     let polyPoints: Pt[] = [];
     let brushStroke: Pt[] = [];
+    let brushSource: string | null = null;
+    let committedBrushIndex = 0;
+    let brushCommitInFlight = false;
+    let brushCommitQueued = false;
+
+    const commitBrushStroke = async (final = false) => {
+      if (
+        brushCommitInFlight ||
+        !(mode === "brush" || mode === "eraser") ||
+        !startLayer ||
+        !brushSource
+      ) {
+        if (brushCommitInFlight && final) brushCommitQueued = true;
+        return;
+      }
+
+      const from = Math.max(0, committedBrushIndex - 1);
+      const segment = brushStroke.slice(from);
+      if (segment.length < 2) return;
+
+      brushCommitInFlight = true;
+      const brushMode = mode;
+      try {
+        const local = segment.map((pt) => contentToLayerLocal(startLayer!, pt));
+        const next = await applyBrushStroke(
+          brushSource,
+          brushMode === "brush" ? "paint" : "erase",
+          local,
+          24,
+        );
+        brushSource = next;
+        committedBrushIndex = brushStroke.length;
+        useEditor.getState().updateLayer(startLayer.id, { src: next });
+      } catch {
+        /* ignore */
+      } finally {
+        brushCommitInFlight = false;
+        if (brushCommitQueued || (final && committedBrushIndex < brushStroke.length)) {
+          brushCommitQueued = false;
+          await commitBrushStroke(final);
+        }
+      }
+    };
 
     const drawOverlay = () => {
       const c = overlayRef.current;
@@ -259,6 +335,9 @@ export function useCanvasTools(
       start = p;
       polyPoints = [p];
       brushStroke = [p];
+      brushSource = null;
+      committedBrushIndex = 0;
+      brushCommitQueued = false;
 
       if (tool === "camera") return; // pan handled elsewhere; camera = default view drag
 
@@ -344,6 +423,8 @@ export function useCanvasTools(
         mode = tool;
         dragging = true;
         s.pushHistory();
+        brushSource = startLayer.src ?? null;
+        committedBrushIndex = 1;
         scheduleOverlay();
         e.preventDefault();
       }
@@ -379,6 +460,8 @@ export function useCanvasTools(
         polyPoints = [p];
       } else if ((mode === "brush" || mode === "eraser") && startLayer) {
         brushStroke.push(p);
+        if (brushCommitInFlight) brushCommitQueued = true;
+        else void commitBrushStroke();
       }
       scheduleOverlay();
     };
@@ -393,7 +476,7 @@ export function useCanvasTools(
           .filter((l) => l.kind === "image")
           .filter((l) => {
             const sampled = sampleLayer(l, s.currentFrame);
-            return pointInPolygon({ x: sampled.x, y: sampled.y }, polyPoints);
+            return polygonIntersectsLayer(polyPoints, sampled);
           })
           .map((l) => l.id);
         s.select(inside);
@@ -419,29 +502,15 @@ export function useCanvasTools(
       } else if (
         (mode === "brush" || mode === "eraser") &&
         startLayer &&
-        startLayer.src &&
         brushStroke.length
       ) {
-        const local = brushStroke.map((pt) =>
-          contentToLayerLocal(startLayer!, pt),
-        );
-        try {
-          const brushSize = 24;
-          const next = await applyBrushStroke(
-            startLayer.src,
-            mode === "brush" ? "paint" : "erase",
-            local,
-            brushSize,
-          );
-          s.updateLayer(startLayer.id, { src: next });
-        } catch {
-          /* ignore */
-        }
+        await commitBrushStroke(true);
       }
 
       mode = null;
       polyPoints = [];
       brushStroke = [];
+      brushSource = null;
       startLayer = null;
       scheduleOverlay();
     };
