@@ -8,11 +8,24 @@ import { useCanvasTools } from "@/hooks/useCanvasTools";
 
 interface SpriteEntry {
   sprite: Sprite;
+  src: string;
   video?: HTMLVideoElement;
   glow?: GlowFilter;
   blur?: BlurFilter;
   chromatic?: RGBSplitFilter;
   flash?: ColorMatrixFilter;
+}
+
+async function textureFromSource(src: string): Promise<Texture> {
+  if (!src.startsWith("data:")) return Assets.load(src) as Promise<Texture>;
+
+  const image = new Image();
+  image.src = src;
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error("image load failed"));
+  });
+  return Texture.from(image);
 }
 
 /**
@@ -147,8 +160,17 @@ export function CanvasStage() {
 
   const ensureSpriteForLayer = async (rawLayer: Layer): Promise<SpriteEntry | null> => {
     let entry = spritesRef.current.get(rawLayer.id);
-    if (entry) return entry;
     if (!rawLayer.src) return null;
+
+    // Reload texture if the layer's source bitmap changed (brush/eraser edits).
+    if (entry && entry.src !== rawLayer.src && rawLayer.mediaType !== "video") {
+      try {
+        const tex = await textureFromSource(rawLayer.src);
+        entry.sprite.texture = tex;
+        entry.src = rawLayer.src;
+      } catch { /* ignore */ }
+    }
+    if (entry) return entry;
 
     try {
       if (rawLayer.mediaType === "video") {
@@ -164,11 +186,11 @@ export function CanvasStage() {
         });
         const tex = Texture.from(video);
         const sp = new Sprite(tex);
-        entry = { sprite: sp, video };
+        entry = { sprite: sp, src: rawLayer.src, video };
       } else {
-        const tex = await Assets.load(rawLayer.src);
+        const tex = await textureFromSource(rawLayer.src);
         const sp = new Sprite(tex);
-        entry = { sprite: sp };
+        entry = { sprite: sp, src: rawLayer.src };
       }
       spritesRef.current.set(rawLayer.id, entry);
       contentRef.current?.addChild(entry.sprite);
@@ -410,8 +432,8 @@ export function CanvasStage() {
 
   return (
     <div className="relative flex-1 min-w-0 min-h-0 checker-bg">
-      <div ref={hostRef} className="absolute inset-0" />
-      <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" />
+      <div ref={hostRef} className="absolute inset-0 z-0" />
+      <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 z-10" />
       <CanvasHud />
     </div>
   );
@@ -427,14 +449,14 @@ function CanvasHud() {
 
   return (
     <>
-      <div className="pointer-events-none absolute top-3 left-3 px-2.5 py-1 rounded-md bg-surface/70 backdrop-blur border border-border text-[11px] text-muted-foreground">
+      <div className="pointer-events-none absolute top-3 left-3 z-20 px-2.5 py-1 rounded-md bg-surface/70 backdrop-blur border border-border text-[11px] text-muted-foreground">
         <span className="text-foreground/80 capitalize">{tool}</span>
         <span className="mx-2 text-border-strong">·</span>
         <span className="font-mono">{cw}×{ch}</span>
         <span className="mx-2 text-border-strong">·</span>
         <span>Hold <kbd className="px-1 rounded bg-surface-2 text-[10px]">Space</kbd> to pan · scroll to zoom</span>
       </div>
-      <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-surface/80 backdrop-blur border border-border px-1 py-1">
+      <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-md bg-surface/80 backdrop-blur border border-border px-1 py-1">
         <button className="tool-btn w-7! h-7!" onClick={() => setZoom(zoom / 1.2)}>−</button>
         <div className="text-[11px] font-mono w-14 text-center">{Math.round(zoom * 100)}%</div>
         <button className="tool-btn w-7! h-7!" onClick={() => setZoom(zoom * 1.2)}>+</button>

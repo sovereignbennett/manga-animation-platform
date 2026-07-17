@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   MousePointer2, Move, RotateCw, Maximize2, Brush, Eraser,
@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useEditor, type ToolId } from "@/store/editorStore";
 import { cn } from "@/lib/utils";
+import { env } from "@/config/env";
 
 const TOOLS: { id: ToolId; icon: React.ComponentType<{ className?: string }>; label: string; key: string }[] = [
   { id: "select", icon: MousePointer2, label: "Select", key: "V" },
@@ -31,6 +32,17 @@ export function TopToolbar() {
   const newProject = useEditor((s) => s.newProject);
   const project = useEditor((s) => s.project);
   const [editingName, setEditingName] = useState(false);
+  const [serverStatus, setServerStatus] = useState<"idle" | "checking" | "waking" | "failed">("idle");
+
+  useEffect(() => {
+    if (env.VITE_PROJECT_PROVIDER !== "remote") return;
+    const onHealth = (event: Event) => {
+      const detail = (event as CustomEvent<{ state: "checking" | "waking" | "ready" | "failed" }>).detail;
+      setServerStatus(detail.state === "ready" ? "idle" : detail.state);
+    };
+    window.addEventListener("motioncut:api-health", onHealth);
+    return () => window.removeEventListener("motioncut:api-health", onHealth);
+  }, []);
 
   const onTool = (id: ToolId) => {
     setTool(id);
@@ -43,7 +55,7 @@ export function TopToolbar() {
   };
 
   return (
-    <header className="h-14 shrink-0 flex items-center gap-3 px-3 border-b border-border bg-panel/60 backdrop-blur">
+    <header className="relative z-[80] h-14 shrink-0 flex items-center gap-3 overflow-visible px-3 border-b border-border bg-panel/60 backdrop-blur">
       <button
         onClick={() => setSidebarPanel("projects")}
         className="flex items-center gap-2 pr-3 border-r border-border hover:opacity-80 transition"
@@ -58,7 +70,7 @@ export function TopToolbar() {
         </div>
       </button>
 
-      <div className="flex items-center gap-1 px-1 rounded-lg bg-surface/60 border border-border">
+      <div className="relative z-[90] flex items-center gap-1 overflow-visible px-1 rounded-lg bg-surface/60 border border-border">
         {TOOLS.map((t) => {
           const Icon = t.icon;
           const isActive = activeTool === t.id;
@@ -66,7 +78,7 @@ export function TopToolbar() {
             <button
               key={t.id}
               onClick={() => onTool(t.id)}
-              className={cn("tool-btn relative group", isActive && "tool-btn-active")}
+              className={cn("tool-btn relative group overflow-visible", isActive && "tool-btn-active")}
               title={`${t.label} (${t.key})`}
             >
               <Icon className="w-4 h-4" />
@@ -76,8 +88,8 @@ export function TopToolbar() {
                   className="absolute -bottom-0.5 left-1.5 right-1.5 h-0.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary-glow)]"
                 />
               )}
-              <span className="pointer-events-none absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-[11px] text-popover-foreground opacity-0 group-hover:opacity-100 transition-opacity border border-border shadow-panel z-50">
-                {t.label} <span className="text-muted-foreground ml-1">{t.key}</span>
+              <span className="pointer-events-none absolute top-full mt-2 left-1/2 z-[9999] -translate-x-1/2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-[11px] font-medium text-popover-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-100 border border-border shadow-panel">
+                {t.label} <kbd className="ml-1 px-1 rounded bg-surface-2 text-muted-foreground text-[10px]">{t.key}</kbd>
               </span>
             </button>
           );
@@ -111,7 +123,15 @@ export function TopToolbar() {
               {projectName}
             </button>
           )}
-          <span className="text-[10px] uppercase tracking-wider text-accent">● Autosaved</span>
+          <span className={cn(
+            "text-[10px] uppercase tracking-wider",
+            serverStatus === "failed" ? "text-destructive" : "text-accent",
+          )}>
+            {serverStatus === "checking" && "● Checking server"}
+            {serverStatus === "waking" && "● Waking MotionCut Server..."}
+            {serverStatus === "failed" && "● Server unavailable"}
+            {serverStatus === "idle" && "● Autosaved"}
+          </span>
         </div>
       </div>
 

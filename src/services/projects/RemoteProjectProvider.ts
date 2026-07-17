@@ -16,6 +16,7 @@ export class RemoteProjectProvider implements ProjectProvider {
   }
 
   async loadInitialProject(): Promise<Project | null> {
+    await this.client.ensureServerReady();
     const projects = await this.listProjects();
     const first = projects[0];
     if (!first) return null;
@@ -24,6 +25,7 @@ export class RemoteProjectProvider implements ProjectProvider {
   }
 
   async saveProject(project: Project): Promise<Project | void> {
+    await this.client.ensureServerReady();
     try {
       const response = await this.updateProject(project);
       return response.project;
@@ -37,11 +39,13 @@ export class RemoteProjectProvider implements ProjectProvider {
   }
 
   async listProjects(): Promise<ProjectSummary[]> {
+    await this.client.ensureServerReady();
     const response = await this.client.request<{ projects: ProjectSummary[] }>("/api/v1/projects");
     return response.projects;
   }
 
   async createProject(project: Project): Promise<ProjectEnvelope> {
+    await this.client.ensureServerReady();
     return this.client.request<ProjectEnvelope>("/api/v1/projects", {
       method: "POST",
       body: {
@@ -57,10 +61,12 @@ export class RemoteProjectProvider implements ProjectProvider {
   }
 
   async getProject(projectId: string): Promise<ProjectEnvelope> {
+    await this.client.ensureServerReady();
     return this.client.request<ProjectEnvelope>(`/api/v1/projects/${projectId}`);
   }
 
   async updateProject(project: Project, version?: number): Promise<ProjectEnvelope> {
+    await this.client.ensureServerReady();
     return this.client.request<ProjectEnvelope>(`/api/v1/projects/${project.id}`, {
       method: "PUT",
       headers: version === undefined ? undefined : { "If-Match": String(version) },
@@ -71,6 +77,7 @@ export class RemoteProjectProvider implements ProjectProvider {
   }
 
   async patchProject(projectId: string, patch: Partial<Pick<Project, "name" | "canvasWidth" | "canvasHeight">>): Promise<{ project: ProjectSummary; version?: number }> {
+    await this.client.ensureServerReady();
     return this.client.request<{ project: ProjectSummary; version?: number }>(`/api/v1/projects/${projectId}`, {
       method: "PATCH",
       body: patch,
@@ -78,12 +85,14 @@ export class RemoteProjectProvider implements ProjectProvider {
   }
 
   async deleteProject(projectId: string): Promise<void> {
+    await this.client.ensureServerReady();
     await this.client.request<void>(`/api/v1/projects/${projectId}`, {
       method: "DELETE",
     });
   }
 
   async createVersion(projectId: string, project: Project, label?: string): Promise<ProjectVersion> {
+    await this.client.ensureServerReady();
     const response = await this.client.request<{ version: ProjectVersion }>(`/api/v1/projects/${projectId}/versions`, {
       method: "POST",
       body: {
@@ -95,11 +104,13 @@ export class RemoteProjectProvider implements ProjectProvider {
   }
 
   async listVersions(projectId: string): Promise<ProjectVersion[]> {
+    await this.client.ensureServerReady();
     const response = await this.client.request<{ versions: ProjectVersion[] }>(`/api/v1/projects/${projectId}/versions`);
     return response.versions;
   }
 
   async getVersion(projectId: string, versionId: string): Promise<{ project: Project; version: ProjectVersion }> {
+    await this.client.ensureServerReady();
     return this.client.request<{ project: Project; version: ProjectVersion }>(`/api/v1/projects/${projectId}/versions/${versionId}`);
   }
 }

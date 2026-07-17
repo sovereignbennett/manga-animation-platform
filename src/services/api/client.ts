@@ -44,11 +44,50 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   authToken?: string;
 };
 
+type HealthState = "checking" | "waking" | "ready" | "failed";
+
+type HealthEventDetail = {
+  state: HealthState;
+  attempt: number;
+};
+
 export class ApiClient {
   private readonly baseUrl: string;
+  private lastHealthOkAt = 0;
 
   constructor(baseUrl = env.VITE_API_URL) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
+  }
+
+  async ensureServerReady(options: {
+    retries?: number;
+    retryDelayMs?: number;
+    freshForMs?: number;
+  } = {}): Promise<void> {
+    if (!this.baseUrl) return;
+
+    const retries = options.retries ?? 5;
+    const retryDelayMs = options.retryDelayMs ?? 2500;
+    const freshForMs = options.freshForMs ?? 60_000;
+    if (Date.now() - this.lastHealthOkAt < freshForMs) return;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      this.emitHealth(attempt === 0 ? "checking" : "waking", attempt + 1);
+      try {
+        await this.request<unknown>("/api/v1/health", {
+          method: "GET",
+        });
+        this.lastHealthOkAt = Date.now();
+        this.emitHealth("ready", attempt + 1);
+        return;
+      } catch (error) {
+        if (attempt >= retries) {
+          this.emitHealth("failed", attempt + 1);
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -94,6 +133,12 @@ export class ApiClient {
     if (/^https?:\/\//.test(path)) return path;
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
     return `${this.baseUrl}${normalizedPath}`;
+  }
+
+  private emitHealth(state: HealthState, attempt: number) {
+    if (typeof window === "undefined") return;
+    const detail: HealthEventDetail = { state, attempt };
+    window.dispatchEvent(new CustomEvent("motioncut:api-health", { detail }));
   }
 
   private async parseJson<T>(response: Response): Promise<T> {
