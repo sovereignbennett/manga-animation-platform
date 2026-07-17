@@ -1,9 +1,9 @@
-// Import the entire module as a namespace object
-import * as gifenc from 'gifenc';
-
+// gifenc ships CJS — namespace import works across Vite SSR and browser.
+import * as gifencNs from "gifenc";
+const gifenc = (gifencNs as unknown as { default?: typeof gifencNs }).default ?? gifencNs;
+const { GIFEncoder, quantize, applyPalette } = gifenc;
 // Destructure the functions from the namespace
-const { GIFEncoder, quantize, applyPalette } = gifenc;import { renderFrame } from "./exportBridge";
-
+import { renderFrame } from "./exportBridge";
 export type ExportProgress = (info: { stage: string; progress: number }) => void;
 
 const downloadBlob = (blob: Blob, filename: string) => {

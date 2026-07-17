@@ -41,9 +41,7 @@ export function MagicCutPanel() {
             </div>
             <div className="min-w-0">
               <div className="text-xs truncate">{layer.name}</div>
-              <div className="text-[10px] text-muted-foreground">
-                {Math.round(layer.width)}×{Math.round(layer.height)}
-              </div>
+              <div className="text-[10px] text-muted-foreground">{Math.round(layer.width)}×{Math.round(layer.height)}</div>
             </div>
           </div>
 
@@ -57,11 +55,7 @@ export function MagicCutPanel() {
               "disabled:opacity-60 disabled:cursor-not-allowed",
             )}
           >
-            {running ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4" />
-            )}
+            {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {running ? "Cutting…" : "Run Magic Cut"}
           </button>
 
@@ -78,8 +72,7 @@ export function MagicCutPanel() {
                 />
               </div>
               <p className="text-[10px] text-muted-foreground">
-                First run downloads a ~20MB in-browser model, then hands off to the AI part
-                detector.
+                First run downloads a ~20MB in-browser model, then hands off to the AI part detector.
               </p>
             </div>
           )}
@@ -90,9 +83,7 @@ export function MagicCutPanel() {
               <div className="min-w-0">
                 <div className="text-xs font-medium text-destructive">Magic Cut failed</div>
                 <div className="text-[11px] text-muted-foreground break-words">{state.error}</div>
-                <button className="mt-1 text-[11px] text-primary hover:underline" onClick={reset}>
-                  Dismiss
-                </button>
+                <button className="mt-1 text-[11px] text-primary hover:underline" onClick={reset}>Dismiss</button>
               </div>
             </div>
           )}
@@ -102,9 +93,7 @@ export function MagicCutPanel() {
               <div className="flex items-center gap-2 rounded-md border border-primary/40 bg-primary/10 p-2.5">
                 <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
                 <div className="text-[11px] leading-tight">
-                  <div className="font-medium text-foreground">
-                    Rigged into {state.result.parts.length} parts
-                  </div>
+                  <div className="font-medium text-foreground">Rigged into {state.result.parts.length} parts</div>
                   <div className="text-muted-foreground">
                     {(state.result.durationMs / 1000).toFixed(1)}s · {state.result.modelTag}
                   </div>
@@ -115,9 +104,7 @@ export function MagicCutPanel() {
                   <div key={p.id} className="flex items-center gap-2 text-[11px]">
                     <span className="w-1.5 h-1.5 rounded-full bg-accent" />
                     <span className="flex-1 truncate">{BODY_PART_LABELS[p.kind]}</span>
-                    <span className="font-mono text-muted-foreground">
-                      {Math.round(p.confidence * 100)}%
-                    </span>
+                    <span className="font-mono text-muted-foreground">{Math.round(p.confidence * 100)}%</span>
                   </div>
                 ))}
               </div>
@@ -129,8 +116,8 @@ export function MagicCutPanel() {
       <div className="flex items-start gap-2 rounded-md bg-surface-2/50 border border-border p-2.5">
         <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
         <p className="text-[10px] text-muted-foreground leading-relaxed">
-          Hybrid pipeline: in-browser background removal + AI body-part detection. Providers are
-          swappable — see <code className="text-accent">services/segmentation</code>.
+          Hybrid pipeline: in-browser background removal + AI body-part detection.
+          Providers are swappable — see <code className="text-accent">services/segmentation</code>.
         </p>
       </div>
     </div>

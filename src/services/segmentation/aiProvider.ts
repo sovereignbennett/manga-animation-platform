@@ -1,34 +1,18 @@
 /**
- * AI-Gateway body-part detection provider.
+ * MotionCut Server body-part detection provider.
  *
- * The heavy lifting (vision model call) lives in the server function
- * `detectBodyParts` (src/lib/segmentation.functions.ts). This provider is
- * the thin client-side adapter that shapes the response into our
- * SegmentationResult contract.
- *
- * TODO(future): swap the vision-model bbox response for a true per-pixel
- * segmentation model (e.g. SAM, YOLOv8-seg). The `SegmentationProvider`
- * interface already supports `mask` on each part — populate it there.
+ * The frontend only talks to MotionCut APIs. Provider keys and model
+ * implementation details live on the backend.
  */
 
+import { apiClient } from "@/services/api/client";
 import type {
   SegmentationProvider,
   SegmentationOptions,
   SegmentationResult,
   SegmentedPart,
-} from "../../types/segmentation";
-const detectBodyParts = async (_input: {
-  data: {
-    imageDataUrl: string;
-    imageWidth: number;
-    imageHeight: number;
-  };
-}): Promise<{
-  parts: SegmentedPart[];
-  modelTag: string;
-}> => {
-  throw new Error("Segmentation backend not implemented yet.");
-};
+} from "@/types/segmentation";
+
 async function loadImageDims(src: string): Promise<{ w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -41,16 +25,13 @@ async function loadImageDims(src: string): Promise<{ w: number; h: number }> {
 
 export const aiProvider: SegmentationProvider = {
   capabilities: {
-    id: "ai-gateway",
+    id: "motioncut-ai",
     displayName: "AI Body-Part Detection",
     clientSide: false,
     producesPartMasks: false, // bboxes only, for now
     costTier: "cheap",
   },
-  async segment(
-    imageSrc,
-    opts: SegmentationOptions = {},
-  ): Promise<SegmentationResult> {
+  async segment(imageSrc, opts: SegmentationOptions = {}): Promise<SegmentationResult> {
     const t0 = performance.now();
     opts.onProgress?.(0.1, "Uploading to AI");
 
@@ -58,22 +39,31 @@ export const aiProvider: SegmentationProvider = {
     if (opts.signal?.aborted) throw new Error("aborted");
 
     opts.onProgress?.(0.35, "Analyzing character");
-    const res = await detectBodyParts({
-      data: { imageDataUrl: imageSrc, imageWidth: w, imageHeight: h },
+    const res = await apiClient.request<Omit<SegmentationResult, "foreground">>("/api/v1/ai/body-parts/detect", {
+      method: "POST",
+      signal: opts.signal,
+      body: {
+        imageDataUrl: imageSrc,
+        imageWidth: w,
+        imageHeight: h,
+        restrictTo: opts.restrictTo ?? [],
+        options: {
+          includeMasks: false,
+          confidenceThreshold: 0.35,
+        },
+      },
     });
     if (opts.signal?.aborted) throw new Error("aborted");
 
     opts.onProgress?.(0.9, "Composing parts");
-    const parts: SegmentedPart[] = res.parts.map(
-      (p: SegmentedPart, i: number) => ({
-        id: `part_${Date.now().toString(36)}_${i}`,
-        kind: p.kind,
-        label: p.label,
-        confidence: p.confidence,
-        bbox: p.bbox,
-        suggestedPivot: p.suggestedPivot,
-      }),
-    );
+    const parts: SegmentedPart[] = res.parts.map((p, i: number) => ({
+      id: `part_${Date.now().toString(36)}_${i}`,
+      kind: p.kind,
+      label: p.label,
+      confidence: p.confidence,
+      bbox: p.bbox,
+      suggestedPivot: p.suggestedPivot,
+    }));
 
     opts.onProgress?.(1, "Done");
     return {

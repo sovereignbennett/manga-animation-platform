@@ -11,7 +11,7 @@ import type {
   SegmentationProvider,
   SegmentationOptions,
   SegmentationResult,
-} from "../../types/segmentation";
+} from "@/types/segmentation";
 
 export type SegmentationStrategy = "foreground" | "parts" | "hybrid";
 
@@ -22,7 +22,10 @@ type Registry = {
 
 const registry: Registry = { foreground: null, parts: null };
 
-export function registerProvider(role: keyof Registry, provider: SegmentationProvider) {
+export function registerProvider(
+  role: keyof Registry,
+  provider: SegmentationProvider,
+) {
   registry[role] = provider;
 }
 

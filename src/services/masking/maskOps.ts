@@ -1,58 +1,100 @@
+/**
+ * Pure raster mask operations. No React, no Zustand, no Pixi — safe to
+ * unit test and to run inside a Web Worker later.
+ *
+ * TODO(perf): move to OffscreenCanvas + Worker for large images.
+ */
+
 import type { BBox, Mask } from "@/types/segmentation";
 
-export interface ExtractedCutout {
-  src: string;
-  bounds: BBox;
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
+async function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Unable to load image for mask extraction"));
-    image.src = src;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
   });
 }
 
-function createCanvas(width: number, height: number) {
+/**
+ * Crop a mask (or any image) to `bbox` and return a data URL sized exactly
+ * to that bbox. Useful for turning a full-canvas cutout into a compact
+ * layer bitmap.
+ */
+export async function cropToBounds(src: string, bbox: BBox): Promise<string> {
+  const img = await loadImage(src);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(width));
-  canvas.height = Math.max(1, Math.round(height));
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) throw new Error("Canvas 2D context is unavailable");
-  return { canvas, context };
+  canvas.width = Math.max(1, Math.round(bbox.width));
+  canvas.height = Math.max(1, Math.round(bbox.height));
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, bbox.x, bbox.y, bbox.width, bbox.height, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png");
 }
 
-export function clampBounds(bounds: BBox, maxWidth: number, maxHeight: number): BBox {
-  const x = Math.max(0, Math.floor(bounds.x));
-  const y = Math.max(0, Math.floor(bounds.y));
-  const right = Math.min(maxWidth, Math.ceil(bounds.x + bounds.width));
-  const bottom = Math.min(maxHeight, Math.ceil(bounds.y + bounds.height));
-
-  return {
-    x,
-    y,
-    width: Math.max(1, right - x),
-    height: Math.max(1, bottom - y),
-  };
-}
-
+/**
+ * Intersect a full-image mask (RGBA cutout of the whole subject) with a
+ * body-part bbox. Returns a cropped PNG containing only the part's pixels,
+ * preserving transparency.
+ */
 export async function extractPartFromForeground(
   foreground: Mask,
-  bounds: BBox,
-): Promise<ExtractedCutout> {
-  const image = await loadImage(foreground.data);
-  const crop = clampBounds(
-    bounds,
-    image.naturalWidth || foreground.width,
-    image.naturalHeight || foreground.height,
-  );
-  const { canvas, context } = createCanvas(crop.width, crop.height);
+  bbox: BBox,
+): Promise<{ src: string; bounds: BBox }> {
+  // Clamp bbox to image bounds
+  const x = Math.max(0, Math.floor(bbox.x));
+  const y = Math.max(0, Math.floor(bbox.y));
+  const w = Math.min(foreground.width - x, Math.ceil(bbox.width));
+  const h = Math.min(foreground.height - y, Math.ceil(bbox.height));
+  const safeBounds: BBox = { x, y, width: w, height: h };
+  const src = await cropToBounds(foreground.data, safeBounds);
+  return { src, bounds: safeBounds };
+}
 
-  context.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+/**
+ * Apply a brush/eraser stroke to a mask image. Returns a new data URL.
+ * @param src   current mask (RGBA PNG data URL)
+ * @param mode  "paint" adds to the mask, "erase" removes from it
+ * @param path  stroke points in **mask-local pixel** coords
+ * @param brushSize radius in pixels
+ */
+export async function applyBrushStroke(
+  src: string,
+  mode: "paint" | "erase",
+  path: Array<{ x: number; y: number }>,
+  brushSize: number,
+  sourceImage?: string, // when painting, we sample color from here
+): Promise<string> {
+  const img = await loadImage(src);
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, 0, 0);
 
-  return {
-    src: canvas.toDataURL("image/png"),
-    bounds: crop,
-  };
+  ctx.lineWidth = brushSize * 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  if (mode === "erase") {
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.strokeStyle = "rgba(0,0,0,1)";
+  } else {
+    // Paint: reveal source pixels through the stroke. If a source image is
+    // supplied we clip the stroke to the source; otherwise fill solid white.
+    ctx.globalCompositeOperation = "source-over";
+    if (sourceImage) {
+      const srcImg = await loadImage(sourceImage);
+      const pattern = ctx.createPattern(srcImg, "no-repeat");
+      if (pattern) ctx.strokeStyle = pattern;
+    } else {
+      ctx.strokeStyle = "rgba(255,255,255,1)";
+    }
+  }
+
+  ctx.beginPath();
+  path.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.stroke();
+
+  return canvas.toDataURL("image/png");
 }

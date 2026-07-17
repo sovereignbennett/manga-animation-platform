@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "sdk_version": "0.22.2",
+  "path": "/mcp",
+  "auth": {
+    "type": "none"
+  },
+  "mcp": {
+    "server": {
+      "name": "motioncut-studio-mcp",
+      "version": "0.1.0",
+      "title": "MotionCut Studio"
+    },
+    "tools": [
+      {
+        "name": "list_animation_presets",
+        "title": "List animation presets",
+        "description": "List MotionCut Studio's built-in one-click animation presets (Pop In, Fade In, Shake, Bounce, Spin, Pulse, etc.) with duration and animated tracks.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_easing_functions",
+        "title": "List easing functions",
+        "description": "List the easing curves available for keyframes in MotionCut Studio's animation timeline.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_export_formats",
+        "title": "List export formats",
+        "description": "List the export output formats MotionCut Studio can produce from a project.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_effects",
+        "title": "List effects",
+        "description": "List the effect filters available in MotionCut Studio's Effects panel.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_keyboard_shortcuts",
+        "title": "List keyboard shortcuts",
+        "description": "List all keyboard shortcuts available inside the MotionCut Studio editor.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_body_part_kinds",
+        "title": "List body-part kinds",
+        "description": "List the anatomical part kinds MotionCut Studio's Magic Cut tool detects and rigs on anime/manga characters.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}

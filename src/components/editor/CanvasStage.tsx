@@ -4,6 +4,7 @@ import { GlowFilter, RGBSplitFilter } from "pixi-filters";
 import { BlurFilter, ColorMatrixFilter } from "pixi.js";
 import { useEditor, sampleLayer, type Layer } from "@/store/editorStore";
 import { registerFrameRenderer } from "@/services/export/exportBridge";
+import { useCanvasTools } from "@/hooks/useCanvasTools";
 
 interface SpriteEntry {
   sprite: Sprite;
@@ -21,9 +22,11 @@ interface SpriteEntry {
  */
 export function CanvasStage() {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
   const contentRef = useRef<Container | null>(null); // layers live here; world = grid + content
+  useCanvasTools(hostRef, overlayRef);
   const gridRef = useRef<Graphics | null>(null);
   const frameGuideRef = useRef<Graphics | null>(null);
   const spritesRef = useRef<Map<string, SpriteEntry>>(new Map());
@@ -408,6 +411,7 @@ export function CanvasStage() {
   return (
     <div className="relative flex-1 min-w-0 min-h-0 checker-bg">
       <div ref={hostRef} className="absolute inset-0" />
+      <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" />
       <CanvasHud />
     </div>
   );
@@ -431,10 +435,10 @@ function CanvasHud() {
         <span>Hold <kbd className="px-1 rounded bg-surface-2 text-[10px]">Space</kbd> to pan · scroll to zoom</span>
       </div>
       <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-surface/80 backdrop-blur border border-border px-1 py-1">
-        <button className="tool-btn !w-7 !h-7" onClick={() => setZoom(zoom / 1.2)}>−</button>
+        <button className="tool-btn w-7! h-7!" onClick={() => setZoom(zoom / 1.2)}>−</button>
         <div className="text-[11px] font-mono w-14 text-center">{Math.round(zoom * 100)}%</div>
-        <button className="tool-btn !w-7 !h-7" onClick={() => setZoom(zoom * 1.2)}>+</button>
-        <button className="tool-btn !w-7 !h-7 text-[10px]" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button>
+        <button className="tool-btn w-7! h-7!" onClick={() => setZoom(zoom * 1.2)}>+</button>
+        <button className="tool-btn w-7! h-7! text-[10px]" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button>
       </div>
     </>
   );

@@ -9,7 +9,7 @@ import type {
   SegmentationOptions,
   SegmentationResult,
   Mask,
-} from "../../types/segmentation";
+} from "@/types/segmentation";
 
 type RemoveBgFn = (src: string | Blob, cfg?: Record<string, unknown>) => Promise<Blob>;
 let removeBgFn: RemoveBgFn | null = null;
@@ -43,10 +43,7 @@ async function loadImage(src: string): Promise<HTMLImageElement> {
 /** Compute tight bounds of non-transparent pixels. */
 function computeAlphaBounds(imageData: ImageData) {
   const { width, height, data } = imageData;
-  let minX = width,
-    minY = height,
-    maxX = -1,
-    maxY = -1;
+  let minX = width, minY = height, maxX = -1, maxY = -1;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const a = data[(y * width + x) * 4 + 3];
