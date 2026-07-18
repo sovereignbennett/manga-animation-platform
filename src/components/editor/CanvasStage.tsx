@@ -16,18 +16,6 @@ interface SpriteEntry {
   flash?: ColorMatrixFilter;
 }
 
-async function textureFromSource(src: string): Promise<Texture> {
-  if (!src.startsWith("data:")) return Assets.load(src) as Promise<Texture>;
-
-  const image = new Image();
-  image.src = src;
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve();
-    image.onerror = () => reject(new Error("image load failed"));
-  });
-  return Texture.from(image);
-}
-
 /**
  * Infinite PixiJS stage with pan (space+drag or middle-mouse), zoom (wheel),
  * rendering of all image/video layers, per-layer effects, and an offscreen
@@ -165,7 +153,7 @@ export function CanvasStage() {
     // Reload texture if the layer's source bitmap changed (brush/eraser edits).
     if (entry && entry.src !== rawLayer.src && rawLayer.mediaType !== "video") {
       try {
-        const tex = await textureFromSource(rawLayer.src);
+        const tex = await Assets.load(rawLayer.src);
         entry.sprite.texture = tex;
         entry.src = rawLayer.src;
       } catch { /* ignore */ }
@@ -188,7 +176,7 @@ export function CanvasStage() {
         const sp = new Sprite(tex);
         entry = { sprite: sp, src: rawLayer.src, video };
       } else {
-        const tex = await textureFromSource(rawLayer.src);
+        const tex = await Assets.load(rawLayer.src);
         const sp = new Sprite(tex);
         entry = { sprite: sp, src: rawLayer.src };
       }
@@ -432,8 +420,8 @@ export function CanvasStage() {
 
   return (
     <div className="relative flex-1 min-w-0 min-h-0 checker-bg">
-      <div ref={hostRef} className="absolute inset-0 z-0" />
-      <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 z-10" />
+      <div ref={hostRef} className="absolute inset-0" />
+      <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" />
       <CanvasHud />
     </div>
   );
@@ -449,18 +437,18 @@ function CanvasHud() {
 
   return (
     <>
-      <div className="pointer-events-none absolute top-3 left-3 z-20 px-2.5 py-1 rounded-md bg-surface/70 backdrop-blur border border-border text-[11px] text-muted-foreground">
+      <div className="pointer-events-none absolute top-3 left-3 px-2.5 py-1 rounded-md bg-surface/70 backdrop-blur border border-border text-[11px] text-muted-foreground">
         <span className="text-foreground/80 capitalize">{tool}</span>
         <span className="mx-2 text-border-strong">·</span>
         <span className="font-mono">{cw}×{ch}</span>
         <span className="mx-2 text-border-strong">·</span>
         <span>Hold <kbd className="px-1 rounded bg-surface-2 text-[10px]">Space</kbd> to pan · scroll to zoom</span>
       </div>
-      <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-md bg-surface/80 backdrop-blur border border-border px-1 py-1">
-        <button className="tool-btn w-7! h-7!" onClick={() => setZoom(zoom / 1.2)}>−</button>
+      <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-surface/80 backdrop-blur border border-border px-1 py-1">
+        <button className="tool-btn !w-7 !h-7" onClick={() => setZoom(zoom / 1.2)}>−</button>
         <div className="text-[11px] font-mono w-14 text-center">{Math.round(zoom * 100)}%</div>
-        <button className="tool-btn w-7! h-7!" onClick={() => setZoom(zoom * 1.2)}>+</button>
-        <button className="tool-btn w-7! h-7! text-[10px]" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button>
+        <button className="tool-btn !w-7 !h-7" onClick={() => setZoom(zoom * 1.2)}>+</button>
+        <button className="tool-btn !w-7 !h-7 text-[10px]" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button>
       </div>
     </>
   );

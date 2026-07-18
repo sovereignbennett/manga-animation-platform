@@ -12,7 +12,7 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         <LeftSidebar />
 
-        <main className="flex-1 overflow-hidden">
+        <main className="flex flex-1 overflow-hidden">
           <CanvasStage />
         </main>
 

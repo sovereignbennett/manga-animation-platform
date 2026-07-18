@@ -2,16 +2,10 @@ import { useEffect } from "react";
 import { useEditor, type Layer, sampleLayer } from "@/store/editorStore";
 import { applyBrushStroke } from "@/services/masking/maskOps";
 
-interface Pt {
-  x: number;
-  y: number;
-}
+interface Pt { x: number; y: number }
 
 /** Convert screen event coords to content-space (Pixi world at zoom=1, origin=canvas center). */
-function screenToContent(
-  el: HTMLElement,
-  e: { clientX: number; clientY: number },
-): Pt {
+function screenToContent(el: HTMLElement, e: { clientX: number; clientY: number }): Pt {
   const rect = el.getBoundingClientRect();
   const s = useEditor.getState();
   const cx = rect.width / 2 + s.pan.x;
@@ -27,8 +21,7 @@ function contentToLayerLocal(layer: Layer, p: Pt): Pt {
   const dx = p.x - layer.x;
   const dy = p.y - layer.y;
   const r = -(layer.rotation * Math.PI) / 180;
-  const cos = Math.cos(r),
-    sin = Math.sin(r);
+  const cos = Math.cos(r), sin = Math.sin(r);
   const rx = dx * cos - dy * sin;
   const ry = dx * sin + dy * cos;
   return {
@@ -37,51 +30,11 @@ function contentToLayerLocal(layer: Layer, p: Pt): Pt {
   };
 }
 
-function layerLocalToContent(layer: Layer, p: Pt): Pt {
-  const lx = (p.x - layer.anchorX * layer.width) * (layer.scaleX || 1);
-  const ly = (p.y - layer.anchorY * layer.height) * (layer.scaleY || 1);
-  const r = (layer.rotation * Math.PI) / 180;
-  const cos = Math.cos(r);
-  const sin = Math.sin(r);
-  return {
-    x: layer.x + lx * cos - ly * sin,
-    y: layer.y + lx * sin + ly * cos,
-  };
-}
-
-function layerProbePoints(layer: Layer): Pt[] {
-  const w = layer.width;
-  const h = layer.height;
-  return [
-    { x: w / 2, y: h / 2 },
-    { x: 0, y: 0 },
-    { x: w, y: 0 },
-    { x: w, y: h },
-    { x: 0, y: h },
-    { x: w / 2, y: 0 },
-    { x: w, y: h / 2 },
-    { x: w / 2, y: h },
-    { x: 0, y: h / 2 },
-  ].map((p) => layerLocalToContent(layer, p));
-}
-
 /** Test whether content-space point p is inside layer's oriented bounding box. */
 function hitTest(layer: Layer, p: Pt): boolean {
-  if (
-    !layer.visible ||
-    layer.locked ||
-    layer.kind !== "image" ||
-    !layer.width ||
-    !layer.height
-  )
-    return false;
+  if (!layer.visible || layer.locked || layer.kind !== "image" || !layer.width || !layer.height) return false;
   const local = contentToLayerLocal(layer, p);
-  return (
-    local.x >= 0 &&
-    local.x <= layer.width &&
-    local.y >= 0 &&
-    local.y <= layer.height
-  );
+  return local.x >= 0 && local.x <= layer.width && local.y >= 0 && local.y <= layer.height;
 }
 
 function topLayerAt(p: Pt): Layer | null {
@@ -96,24 +49,26 @@ function topLayerAt(p: Pt): Layer | null {
   return null;
 }
 
+function topSelectedLayerAt(p: Pt): Layer | null {
+  const s = useEditor.getState();
+  const order = s.project.order;
+  for (let i = order.length - 1; i >= 0; i--) {
+    const l = s.project.layers.find((x) => x.id === order[i]);
+    if (!l || !s.selectedIds.includes(l.id)) continue;
+    const sampled = sampleLayer(l, s.currentFrame);
+    if (hitTest(sampled, p)) return l;
+  }
+  return null;
+}
+
 function pointInPolygon(p: Pt, poly: Pt[]): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x,
-      yi = poly[i].y,
-      xj = poly[j].x,
-      yj = poly[j].y;
-    const intersect =
-      yi > p.y !== yj > p.y &&
-      p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-9) + xi;
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    const intersect = yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-9) + xi;
     if (intersect) inside = !inside;
   }
   return inside;
-}
-
-function polygonIntersectsLayer(poly: Pt[], layer: Layer): boolean {
-  if (layerProbePoints(layer).some((p) => pointInPolygon(p, poly))) return true;
-  return poly.some((p) => hitTest(layer, p));
 }
 
 export interface CanvasToolsApi {
@@ -135,63 +90,11 @@ export function useCanvasTools(
     if (!el) return;
 
     let dragging = false;
-    let mode:
-      | null
-      | "move"
-      | "rotate"
-      | "scale"
-      | "lasso"
-      | "brush"
-      | "eraser"
-      | "pen"
-      | "marquee" = null;
+    let mode: null | "move" | "rotate" | "scale" | "lasso" | "brush" | "eraser" | "pen" | "marquee" = null;
     let start: Pt = { x: 0, y: 0 };
     let startLayer: Layer | null = null;
     let polyPoints: Pt[] = [];
     let brushStroke: Pt[] = [];
-    let brushSource: string | null = null;
-    let committedBrushIndex = 0;
-    let brushCommitInFlight = false;
-    let brushCommitQueued = false;
-
-    const commitBrushStroke = async (final = false) => {
-      if (
-        brushCommitInFlight ||
-        !(mode === "brush" || mode === "eraser") ||
-        !startLayer ||
-        !brushSource
-      ) {
-        if (brushCommitInFlight && final) brushCommitQueued = true;
-        return;
-      }
-
-      const from = Math.max(0, committedBrushIndex - 1);
-      const segment = brushStroke.slice(from);
-      if (segment.length < 2) return;
-
-      brushCommitInFlight = true;
-      const brushMode = mode;
-      try {
-        const local = segment.map((pt) => contentToLayerLocal(startLayer!, pt));
-        const next = await applyBrushStroke(
-          brushSource,
-          brushMode === "brush" ? "paint" : "erase",
-          local,
-          24,
-        );
-        brushSource = next;
-        committedBrushIndex = brushStroke.length;
-        useEditor.getState().updateLayer(startLayer.id, { src: next });
-      } catch {
-        /* ignore */
-      } finally {
-        brushCommitInFlight = false;
-        if (brushCommitQueued || (final && committedBrushIndex < brushStroke.length)) {
-          brushCommitQueued = false;
-          await commitBrushStroke(final);
-        }
-      }
-    };
 
     const drawOverlay = () => {
       const c = overlayRef.current;
@@ -251,25 +154,6 @@ export function useCanvasTools(
         ctx.setLineDash([]);
       }
 
-      // active brush / eraser stroke preview
-      if ((mode === "brush" || mode === "eraser") && brushStroke.length > 0) {
-        ctx.beginPath();
-        brushStroke.forEach((p, i) => {
-          const sx = cx + p.x * s.zoom;
-          const sy = cy + p.y * s.zoom;
-          if (i === 0) ctx.moveTo(sx, sy);
-          else ctx.lineTo(sx, sy);
-        });
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.lineWidth = Math.max(2, 24 * s.zoom);
-        ctx.strokeStyle = mode === "eraser" ? "rgba(255,90,120,0.7)" : "rgba(77,212,212,0.7)";
-        ctx.stroke();
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = mode === "eraser" ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.8)";
-        ctx.stroke();
-      }
-
       // marquee rect
       if (mode === "marquee") {
         const x0 = cx + start.x * s.zoom;
@@ -282,18 +166,8 @@ export function useCanvasTools(
           ctx.fillStyle = "rgba(212,77,201,0.08)";
           ctx.lineWidth = 1;
           ctx.setLineDash([4, 3]);
-          ctx.strokeRect(
-            Math.min(x0, x1),
-            Math.min(y0, y1),
-            Math.abs(x1 - x0),
-            Math.abs(y1 - y0),
-          );
-          ctx.fillRect(
-            Math.min(x0, x1),
-            Math.min(y0, y1),
-            Math.abs(x1 - x0),
-            Math.abs(y1 - y0),
-          );
+          ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+          ctx.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
           ctx.setLineDash([]);
         }
       }
@@ -302,21 +176,11 @@ export function useCanvasTools(
     let rafId = 0;
     const scheduleOverlay = () => {
       if (rafId) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = 0;
-        drawOverlay();
-      });
+      rafId = requestAnimationFrame(() => { rafId = 0; drawOverlay(); });
     };
 
     const unsub = useEditor.subscribe(
-      (s) => ({
-        z: s.zoom,
-        p: s.pan,
-        sel: s.selectedIds,
-        ord: s.project.order,
-        f: s.currentFrame,
-        layers: s.project.layers,
-      }),
+      (s) => ({ z: s.zoom, p: s.pan, sel: s.selectedIds, ord: s.project.order, f: s.currentFrame, layers: s.project.layers }),
       scheduleOverlay,
     );
 
@@ -335,18 +199,13 @@ export function useCanvasTools(
       start = p;
       polyPoints = [p];
       brushStroke = [p];
-      brushSource = null;
-      committedBrushIndex = 0;
-      brushCommitQueued = false;
 
       if (tool === "camera") return; // pan handled elsewhere; camera = default view drag
 
       if (tool === "select") {
         const hit = topLayerAt(p);
         if (hit) {
-          const nextSel = e.shiftKey
-            ? Array.from(new Set([...s.selectedIds, hit.id]))
-            : [hit.id];
+          const nextSel = e.shiftKey ? Array.from(new Set([...s.selectedIds, hit.id])) : [hit.id];
           s.select(nextSel);
         } else {
           if (!e.shiftKey) s.select([]);
@@ -378,16 +237,27 @@ export function useCanvasTools(
       if (tool === "pen") {
         mode = "pen";
         dragging = true;
-        s.select([]);
         e.preventDefault();
         return;
       }
 
+      if (tool === "brush" || tool === "eraser") {
+        const rawStrokeTarget = topSelectedLayerAt(p) ?? topLayerAt(p);
+        if (!rawStrokeTarget?.src || rawStrokeTarget.mediaType === "video") return;
+
+        // Brush coordinates must use the same sampled transform that Pixi is
+        // rendering at the current frame, not the layer's static base values.
+        startLayer = { ...sampleLayer(rawStrokeTarget, s.currentFrame), src: rawStrokeTarget.src };
+        s.select([rawStrokeTarget.id]);
+        mode = tool;
+        dragging = true;
+        e.preventDefault();
+        scheduleOverlay();
+        return;
+      }
+
       // Transform tools require a selected layer (fallback: pick under cursor)
-      let target2 =
-        s.project.layers.find(
-          (l) => s.selectedIds.includes(l.id) && l.kind === "image",
-        ) ?? null;
+      let target2 = s.project.layers.find((l) => s.selectedIds.includes(l.id) && l.kind === "image") ?? null;
       if (!target2) {
         const hit = topLayerAt(p);
         if (hit) {
@@ -398,36 +268,9 @@ export function useCanvasTools(
       if (!target2) return;
       startLayer = { ...target2 };
 
-      if (tool === "move") {
-        mode = "move";
-        dragging = true;
-        s.pushHistory();
-        e.preventDefault();
-        return;
-      }
-      if (tool === "rotate") {
-        mode = "rotate";
-        dragging = true;
-        s.pushHistory();
-        e.preventDefault();
-        return;
-      }
-      if (tool === "scale") {
-        mode = "scale";
-        dragging = true;
-        s.pushHistory();
-        e.preventDefault();
-        return;
-      }
-      if (tool === "brush" || tool === "eraser") {
-        mode = tool;
-        dragging = true;
-        s.pushHistory();
-        brushSource = startLayer.src ?? null;
-        committedBrushIndex = 1;
-        scheduleOverlay();
-        e.preventDefault();
-      }
+      if (tool === "move") { mode = "move"; dragging = true; s.pushHistory(); e.preventDefault(); return; }
+      if (tool === "rotate") { mode = "rotate"; dragging = true; s.pushHistory(); e.preventDefault(); return; }
+      if (tool === "scale") { mode = "scale"; dragging = true; s.pushHistory(); e.preventDefault(); return; }
     };
 
     const onMove = (e: MouseEvent) => {
@@ -436,32 +279,23 @@ export function useCanvasTools(
       const s = useEditor.getState();
 
       if (mode === "move" && startLayer) {
-        s.updateLayer(startLayer.id, {
-          x: startLayer.x + (p.x - start.x),
-          y: startLayer.y + (p.y - start.y),
-        });
+        s.updateLayer(startLayer.id, { x: startLayer.x + (p.x - start.x), y: startLayer.y + (p.y - start.y) });
       } else if (mode === "rotate" && startLayer) {
         const a0 = Math.atan2(start.y - startLayer.y, start.x - startLayer.x);
         const a1 = Math.atan2(p.y - startLayer.y, p.x - startLayer.x);
         const deg = ((a1 - a0) * 180) / Math.PI;
         s.updateLayer(startLayer.id, { rotation: startLayer.rotation + deg });
       } else if (mode === "scale" && startLayer) {
-        const d0 =
-          Math.hypot(start.x - startLayer.x, start.y - startLayer.y) || 1;
+        const d0 = Math.hypot(start.x - startLayer.x, start.y - startLayer.y) || 1;
         const d1 = Math.hypot(p.x - startLayer.x, p.y - startLayer.y);
         const k = Math.max(0.05, d1 / d0);
-        s.updateLayer(startLayer.id, {
-          scaleX: startLayer.scaleX * k,
-          scaleY: startLayer.scaleY * k,
-        });
+        s.updateLayer(startLayer.id, { scaleX: startLayer.scaleX * k, scaleY: startLayer.scaleY * k });
       } else if (mode === "lasso" || mode === "pen") {
         polyPoints.push(p);
       } else if (mode === "marquee") {
         polyPoints = [p];
       } else if ((mode === "brush" || mode === "eraser") && startLayer) {
         brushStroke.push(p);
-        if (brushCommitInFlight) brushCommitQueued = true;
-        else void commitBrushStroke();
       }
       scheduleOverlay();
     };
@@ -476,41 +310,40 @@ export function useCanvasTools(
           .filter((l) => l.kind === "image")
           .filter((l) => {
             const sampled = sampleLayer(l, s.currentFrame);
-            return polygonIntersectsLayer(polyPoints, sampled);
+            return pointInPolygon({ x: sampled.x, y: sampled.y }, polyPoints);
           })
           .map((l) => l.id);
         s.select(inside);
       } else if (mode === "marquee" && polyPoints.length) {
         const end = polyPoints[polyPoints.length - 1];
-        const x0 = Math.min(start.x, end.x),
-          x1 = Math.max(start.x, end.x);
-        const y0 = Math.min(start.y, end.y),
-          y1 = Math.max(start.y, end.y);
+        const x0 = Math.min(start.x, end.x), x1 = Math.max(start.x, end.x);
+        const y0 = Math.min(start.y, end.y), y1 = Math.max(start.y, end.y);
         const inside = s.project.layers
           .filter((l) => l.kind === "image")
           .filter((l) => {
             const sampled = sampleLayer(l, s.currentFrame);
-            return (
-              sampled.x >= x0 &&
-              sampled.x <= x1 &&
-              sampled.y >= y0 &&
-              sampled.y <= y1
-            );
+            return sampled.x >= x0 && sampled.x <= x1 && sampled.y >= y0 && sampled.y <= y1;
           })
           .map((l) => l.id);
         if (inside.length) s.select(inside);
-      } else if (
-        (mode === "brush" || mode === "eraser") &&
-        startLayer &&
-        brushStroke.length
-      ) {
-        await commitBrushStroke(true);
+      } else if ((mode === "brush" || mode === "eraser") && startLayer && startLayer.src && brushStroke.length) {
+        const local = brushStroke.map((pt) => contentToLayerLocal(startLayer!, pt));
+        try {
+          const brushSize = 24;
+          const next = await applyBrushStroke(
+            startLayer.src,
+            mode === "brush" ? "paint" : "erase",
+            local,
+            brushSize,
+          );
+          s.pushHistory();
+          s.updateLayer(startLayer.id, { src: next });
+        } catch { /* ignore */ }
       }
 
       mode = null;
       polyPoints = [];
       brushStroke = [];
-      brushSource = null;
       startLayer = null;
       scheduleOverlay();
     };
