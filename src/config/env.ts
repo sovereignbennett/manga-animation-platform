@@ -1,5 +1,5 @@
 type ProjectProviderMode = "local" | "remote";
-
+console.log(import.meta.env.VITE_API_URL);
 const providerMode = (import.meta.env.VITE_PROJECT_PROVIDER ?? "local").toLowerCase();
 
 export const env = {
