@@ -24,7 +24,7 @@ export function RightInspector() {
   };
 
   return (
-    <aside className="w-70 shrink-0 border-l border-border bg-panel/60 backdrop-blur flex flex-col">
+    <aside className="hidden xl:flex w-70 shrink-0 border-l border-border bg-panel/60 backdrop-blur flex-col">
       <div className="h-11 shrink-0 flex items-center px-3 border-b border-border">
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Inspector</h2>
         <div className="ml-auto text-[10px] font-mono text-muted-foreground">f {currentFrame}</div>

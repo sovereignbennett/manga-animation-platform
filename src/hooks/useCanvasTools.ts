@@ -184,10 +184,10 @@ export function useCanvasTools(
       scheduleOverlay,
     );
 
-    const onDown = (e: MouseEvent) => {
-      if (e.button !== 0) return;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       // Pan handled by CanvasStage when space is held
-      if ((e as MouseEvent & { _panning?: boolean })._panning) return;
+      if ((e as PointerEvent & { _panning?: boolean })._panning) return;
       const target = e.target as HTMLElement;
       if (target !== el && !el.contains(target)) return;
       // Don't hijack space-pan (CanvasStage sets cursor grabbing)
@@ -196,6 +196,7 @@ export function useCanvasTools(
       const s = useEditor.getState();
       const tool = s.activeTool;
       const p = screenToContent(el, e);
+      el.setPointerCapture?.(e.pointerId);
       start = p;
       polyPoints = [p];
       brushStroke = [p];
@@ -273,8 +274,9 @@ export function useCanvasTools(
       if (tool === "scale") { mode = "scale"; dragging = true; s.pushHistory(); e.preventDefault(); return; }
     };
 
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       if (!dragging) return;
+      e.preventDefault();
       const p = screenToContent(el, e);
       const s = useEditor.getState();
 
@@ -300,8 +302,9 @@ export function useCanvasTools(
       scheduleOverlay();
     };
 
-    const onUp = async () => {
+    const onUp = async (e?: PointerEvent) => {
       if (!dragging) return;
+      if (e) el.releasePointerCapture?.(e.pointerId);
       dragging = false;
       const s = useEditor.getState();
 
@@ -348,16 +351,18 @@ export function useCanvasTools(
       scheduleOverlay();
     };
 
-    el.addEventListener("mousedown", onDown);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    el.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     window.addEventListener("resize", scheduleOverlay);
     scheduleOverlay();
 
     return () => {
-      el.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       window.removeEventListener("resize", scheduleOverlay);
       unsub();
       if (rafId) cancelAnimationFrame(rafId);

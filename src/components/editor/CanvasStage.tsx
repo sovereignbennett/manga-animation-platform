@@ -376,23 +376,29 @@ export function CanvasStage() {
     const onKeyDown = (e: KeyboardEvent) => { if (e.code === "Space") spaceDown = true; };
     const onKeyUp = (e: KeyboardEvent) => { if (e.code === "Space") spaceDown = false; };
 
-    const onDown = (e: MouseEvent) => {
-      if (e.button === 1 || spaceDown) {
+    const onDown = (e: PointerEvent) => {
+      if ((e.pointerType === "mouse" && e.button === 1) || spaceDown) {
         isPanning = true;
         last = { x: e.clientX, y: e.clientY };
         el.style.cursor = "grabbing";
+        el.setPointerCapture?.(e.pointerId);
         e.preventDefault();
       }
     };
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       if (!isPanning) return;
+      e.preventDefault();
       const dx = e.clientX - last.x;
       const dy = e.clientY - last.y;
       last = { x: e.clientX, y: e.clientY };
       const s = useEditor.getState();
       s.setPan({ x: s.pan.x + dx, y: s.pan.y + dy });
     };
-    const onUp = () => { isPanning = false; el.style.cursor = ""; };
+    const onUp = (e?: PointerEvent) => {
+      if (e) el.releasePointerCapture?.(e.pointerId);
+      isPanning = false;
+      el.style.cursor = "";
+    };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -401,17 +407,19 @@ export function CanvasStage() {
       s.setZoom(s.zoom * factor);
     };
 
-    el.addEventListener("mousedown", onDown);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    el.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     el.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
     return () => {
-      el.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
@@ -420,7 +428,7 @@ export function CanvasStage() {
 
   return (
     <div className="relative flex-1 min-w-0 min-h-0 checker-bg">
-      <div ref={hostRef} className="absolute inset-0" />
+      <div ref={hostRef} className="absolute inset-0 touch-none" />
       <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" />
       <CanvasHud />
     </div>

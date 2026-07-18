@@ -55,22 +55,22 @@ export function TopToolbar() {
   };
 
   return (
-    <header className="relative z-[80] h-14 shrink-0 flex items-center gap-3 overflow-visible px-3 border-b border-border bg-panel/60 backdrop-blur">
+    <header className="relative z-[80] min-h-14 shrink-0 flex flex-wrap xl:flex-nowrap items-center gap-2 xl:gap-3 overflow-visible px-2 xl:px-3 py-1 xl:py-0 border-b border-border bg-panel/60 backdrop-blur">
       <button
         onClick={() => setSidebarPanel("projects")}
-        className="flex items-center gap-2 pr-3 border-r border-border hover:opacity-80 transition"
+        className="flex shrink-0 items-center gap-2 pr-2 xl:pr-3 border-r border-border hover:opacity-80 transition"
         title="Projects"
       >
         <div className="w-8 h-8 rounded-md bg-linear-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_24px_-4px_var(--primary-glow)]">
           <Sparkles className="w-4 h-4 text-primary-foreground" />
         </div>
-        <div className="leading-tight text-left">
+        <div className="hidden sm:block leading-tight text-left">
           <div className="text-[13px] font-semibold font-display tracking-tight">MotionCut</div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-[0.14em]">Studio</div>
         </div>
       </button>
 
-      <div className="relative z-[90] flex items-center gap-1 overflow-visible px-1 rounded-lg bg-surface/60 border border-border">
+      <div className="relative z-[90] order-3 xl:order-none flex w-full xl:w-auto min-w-0 items-center gap-1 overflow-x-auto overflow-y-visible scroll-thin px-1 rounded-lg bg-surface/60 border border-border">
         {TOOLS.map((t) => {
           const Icon = t.icon;
           const isActive = activeTool === t.id;
@@ -96,15 +96,15 @@ export function TopToolbar() {
         })}
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <button className="tool-btn" title="Undo (⌘Z)" onClick={undo}><Undo2 className="w-4 h-4" /></button>
         <button className="tool-btn" title="Redo (⌘⇧Z)" onClick={redo}><Redo2 className="w-4 h-4" /></button>
         <button className="tool-btn" title="New project" onClick={() => newProject("Untitled Project")}><Plus className="w-4 h-4" /></button>
         <button className="tool-btn" title="Magic Cut panel" onClick={() => setSidebarPanel("magic")}><Wand className="w-4 h-4" /></button>
       </div>
 
-      <div className="flex-1 flex items-center justify-center">
-        <div className="px-3 py-1.5 rounded-md bg-surface/60 border border-border text-xs text-muted-foreground flex items-center gap-2">
+      <div className="hidden md:flex flex-1 min-w-0 items-center justify-center">
+        <div className="min-w-0 px-3 py-1.5 rounded-md bg-surface/60 border border-border text-xs text-muted-foreground flex items-center gap-2">
           {editingName ? (
             <input
               autoFocus
@@ -117,7 +117,7 @@ export function TopToolbar() {
             <button
               onDoubleClick={() => setEditingName(true)}
               onClick={() => setEditingName(true)}
-              className="text-foreground/80 font-medium hover:text-foreground"
+              className="max-w-40 xl:max-w-none truncate text-foreground/80 font-medium hover:text-foreground"
               title="Double-click to rename"
             >
               {projectName}
@@ -137,7 +137,7 @@ export function TopToolbar() {
 
       <button
         onClick={() => setSidebarPanel("export")}
-        className="inline-flex items-center gap-2 h-9 px-3 rounded-md text-xs font-medium bg-linear-to-r from-primary to-accent text-primary-foreground shadow-[0_0_24px_-6px_var(--primary-glow)] hover:brightness-110 transition"
+        className="ml-auto xl:ml-0 inline-flex shrink-0 items-center gap-2 h-9 px-3 rounded-md text-xs font-medium bg-linear-to-r from-primary to-accent text-primary-foreground shadow-[0_0_24px_-6px_var(--primary-glow)] hover:brightness-110 transition"
       >
         <Download className="w-4 h-4" />
         Export

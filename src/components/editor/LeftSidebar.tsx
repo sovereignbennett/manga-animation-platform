@@ -58,7 +58,7 @@ export function LeftSidebar() {
         })}
       </nav>
 
-      <div className="w-72 shrink-0 border-r border-border bg-panel/60 backdrop-blur flex flex-col">
+      <div className="w-72 lg:w-80 shrink-0 border-r border-border bg-panel/60 backdrop-blur flex flex-col">
         <div className="h-11 shrink-0 flex items-center justify-between px-3 border-b border-border">
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {NAV.find((n) => n.id === panel)?.label}
@@ -239,24 +239,24 @@ function LayersPanel() {
               )}
               <div className="text-[10px] text-muted-foreground">{Math.round(layer.width)}×{Math.round(layer.height)}</div>
             </div>
-            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <button className="tool-btn !w-7 !h-7" onClick={(e) => { e.stopPropagation(); reorderLayer(layer.id, "up"); }} title="Move up">
+            <div className="flex items-center opacity-100 xl:opacity-0 xl:group-hover:opacity-100 transition-opacity">
+              <button className="tool-btn !w-8 !h-8 xl:!w-7 xl:!h-7" onClick={(e) => { e.stopPropagation(); reorderLayer(layer.id, "up"); }} title="Move up">
                 <ChevronUp className="w-3.5 h-3.5" />
               </button>
-              <button className="tool-btn !w-7 !h-7" onClick={(e) => { e.stopPropagation(); reorderLayer(layer.id, "down"); }} title="Move down">
+              <button className="tool-btn !w-8 !h-8 xl:!w-7 xl:!h-7" onClick={(e) => { e.stopPropagation(); reorderLayer(layer.id, "down"); }} title="Move down">
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
-              <button className="tool-btn !w-7 !h-7" onClick={(e) => { e.stopPropagation(); duplicateLayers([layer.id]); }} title="Duplicate">
+              <button className="tool-btn !w-8 !h-8 xl:!w-7 xl:!h-7" onClick={(e) => { e.stopPropagation(); duplicateLayers([layer.id]); }} title="Duplicate">
                 <Copy className="w-3.5 h-3.5" />
               </button>
-              <button className="tool-btn !w-7 !h-7 hover:!text-destructive" onClick={(e) => { e.stopPropagation(); removeLayers([layer.id]); }} title="Delete">
+              <button className="tool-btn !w-8 !h-8 xl:!w-7 xl:!h-7 hover:!text-destructive" onClick={(e) => { e.stopPropagation(); removeLayers([layer.id]); }} title="Delete">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
-            <button className="tool-btn !w-7 !h-7" onClick={(e) => { e.stopPropagation(); toggleLocked(layer.id); }} title={layer.locked ? "Unlock" : "Lock"}>
+            <button className="tool-btn !w-8 !h-8 xl:!w-7 xl:!h-7" onClick={(e) => { e.stopPropagation(); toggleLocked(layer.id); }} title={layer.locked ? "Unlock" : "Lock"}>
               {layer.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5 opacity-40" />}
             </button>
-            <button className="tool-btn !w-7 !h-7" onClick={(e) => { e.stopPropagation(); toggleVisible(layer.id); }} title={layer.visible ? "Hide" : "Show"}>
+            <button className="tool-btn !w-8 !h-8 xl:!w-7 xl:!h-7" onClick={(e) => { e.stopPropagation(); toggleVisible(layer.id); }} title={layer.visible ? "Hide" : "Show"}>
               {layer.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 opacity-40" />}
             </button>
           </div>
