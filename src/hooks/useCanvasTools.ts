@@ -1,11 +1,17 @@
 import { useEffect } from "react";
 import { useEditor, type Layer, sampleLayer } from "@/store/editorStore";
-import { applyBrushStroke } from "@/services/masking/maskOps";
+import { applyBrushStroke, cutToPolygon } from "@/services/masking/maskOps";
 
-interface Pt { x: number; y: number }
+interface Pt {
+  x: number;
+  y: number;
+}
 
 /** Convert screen event coords to content-space (Pixi world at zoom=1, origin=canvas center). */
-function screenToContent(el: HTMLElement, e: { clientX: number; clientY: number }): Pt {
+function screenToContent(
+  el: HTMLElement,
+  e: { clientX: number; clientY: number },
+): Pt {
   const rect = el.getBoundingClientRect();
   const s = useEditor.getState();
   const cx = rect.width / 2 + s.pan.x;
@@ -21,7 +27,8 @@ function contentToLayerLocal(layer: Layer, p: Pt): Pt {
   const dx = p.x - layer.x;
   const dy = p.y - layer.y;
   const r = -(layer.rotation * Math.PI) / 180;
-  const cos = Math.cos(r), sin = Math.sin(r);
+  const cos = Math.cos(r),
+    sin = Math.sin(r);
   const rx = dx * cos - dy * sin;
   const ry = dx * sin + dy * cos;
   return {
@@ -32,9 +39,21 @@ function contentToLayerLocal(layer: Layer, p: Pt): Pt {
 
 /** Test whether content-space point p is inside layer's oriented bounding box. */
 function hitTest(layer: Layer, p: Pt): boolean {
-  if (!layer.visible || layer.locked || layer.kind !== "image" || !layer.width || !layer.height) return false;
+  if (
+    !layer.visible ||
+    layer.locked ||
+    layer.kind !== "image" ||
+    !layer.width ||
+    !layer.height
+  )
+    return false;
   const local = contentToLayerLocal(layer, p);
-  return local.x >= 0 && local.x <= layer.width && local.y >= 0 && local.y <= layer.height;
+  return (
+    local.x >= 0 &&
+    local.x <= layer.width &&
+    local.y >= 0 &&
+    local.y <= layer.height
+  );
 }
 
 function topLayerAt(p: Pt): Layer | null {
@@ -64,8 +83,13 @@ function topSelectedLayerAt(p: Pt): Layer | null {
 function pointInPolygon(p: Pt, poly: Pt[]): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
-    const intersect = yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-9) + xi;
+    const xi = poly[i].x,
+      yi = poly[i].y,
+      xj = poly[j].x,
+      yj = poly[j].y;
+    const intersect =
+      yi > p.y !== yj > p.y &&
+      p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-9) + xi;
     if (intersect) inside = !inside;
   }
   return inside;
@@ -90,7 +114,16 @@ export function useCanvasTools(
     if (!el) return;
 
     let dragging = false;
-    let mode: null | "move" | "rotate" | "scale" | "lasso" | "brush" | "eraser" | "pen" | "marquee" = null;
+    let mode:
+      | null
+      | "move"
+      | "rotate"
+      | "scale"
+      | "lasso"
+      | "brush"
+      | "eraser"
+      | "pen"
+      | "marquee" = null;
     let start: Pt = { x: 0, y: 0 };
     let startLayer: Layer | null = null;
     let polyPoints: Pt[] = [];
@@ -166,8 +199,18 @@ export function useCanvasTools(
           ctx.fillStyle = "rgba(212,77,201,0.08)";
           ctx.lineWidth = 1;
           ctx.setLineDash([4, 3]);
-          ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
-          ctx.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+          ctx.strokeRect(
+            Math.min(x0, x1),
+            Math.min(y0, y1),
+            Math.abs(x1 - x0),
+            Math.abs(y1 - y0),
+          );
+          ctx.fillRect(
+            Math.min(x0, x1),
+            Math.min(y0, y1),
+            Math.abs(x1 - x0),
+            Math.abs(y1 - y0),
+          );
           ctx.setLineDash([]);
         }
       }
@@ -176,11 +219,21 @@ export function useCanvasTools(
     let rafId = 0;
     const scheduleOverlay = () => {
       if (rafId) return;
-      rafId = requestAnimationFrame(() => { rafId = 0; drawOverlay(); });
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        drawOverlay();
+      });
     };
 
     const unsub = useEditor.subscribe(
-      (s) => ({ z: s.zoom, p: s.pan, sel: s.selectedIds, ord: s.project.order, f: s.currentFrame, layers: s.project.layers }),
+      (s) => ({
+        z: s.zoom,
+        p: s.pan,
+        sel: s.selectedIds,
+        ord: s.project.order,
+        f: s.currentFrame,
+        layers: s.project.layers,
+      }),
       scheduleOverlay,
     );
 
@@ -206,7 +259,9 @@ export function useCanvasTools(
       if (tool === "select") {
         const hit = topLayerAt(p);
         if (hit) {
-          const nextSel = e.shiftKey ? Array.from(new Set([...s.selectedIds, hit.id])) : [hit.id];
+          const nextSel = e.shiftKey
+            ? Array.from(new Set([...s.selectedIds, hit.id]))
+            : [hit.id];
           s.select(nextSel);
         } else {
           if (!e.shiftKey) s.select([]);
@@ -228,7 +283,6 @@ export function useCanvasTools(
       }
 
       if (tool === "lasso") {
-        s.select([]);
         mode = "lasso";
         dragging = true;
         e.preventDefault();
@@ -244,11 +298,15 @@ export function useCanvasTools(
 
       if (tool === "brush" || tool === "eraser") {
         const rawStrokeTarget = topSelectedLayerAt(p) ?? topLayerAt(p);
-        if (!rawStrokeTarget?.src || rawStrokeTarget.mediaType === "video") return;
+        if (!rawStrokeTarget?.src || rawStrokeTarget.mediaType === "video")
+          return;
 
         // Brush coordinates must use the same sampled transform that Pixi is
         // rendering at the current frame, not the layer's static base values.
-        startLayer = { ...sampleLayer(rawStrokeTarget, s.currentFrame), src: rawStrokeTarget.src };
+        startLayer = {
+          ...sampleLayer(rawStrokeTarget, s.currentFrame),
+          src: rawStrokeTarget.src,
+        };
         s.select([rawStrokeTarget.id]);
         mode = tool;
         dragging = true;
@@ -258,7 +316,10 @@ export function useCanvasTools(
       }
 
       // Transform tools require a selected layer (fallback: pick under cursor)
-      let target2 = s.project.layers.find((l) => s.selectedIds.includes(l.id) && l.kind === "image") ?? null;
+      let target2 =
+        s.project.layers.find(
+          (l) => s.selectedIds.includes(l.id) && l.kind === "image",
+        ) ?? null;
       if (!target2) {
         const hit = topLayerAt(p);
         if (hit) {
@@ -269,9 +330,27 @@ export function useCanvasTools(
       if (!target2) return;
       startLayer = { ...target2 };
 
-      if (tool === "move") { mode = "move"; dragging = true; s.pushHistory(); e.preventDefault(); return; }
-      if (tool === "rotate") { mode = "rotate"; dragging = true; s.pushHistory(); e.preventDefault(); return; }
-      if (tool === "scale") { mode = "scale"; dragging = true; s.pushHistory(); e.preventDefault(); return; }
+      if (tool === "move") {
+        mode = "move";
+        dragging = true;
+        s.pushHistory();
+        e.preventDefault();
+        return;
+      }
+      if (tool === "rotate") {
+        mode = "rotate";
+        dragging = true;
+        s.pushHistory();
+        e.preventDefault();
+        return;
+      }
+      if (tool === "scale") {
+        mode = "scale";
+        dragging = true;
+        s.pushHistory();
+        e.preventDefault();
+        return;
+      }
     };
 
     const onMove = (e: PointerEvent) => {
@@ -281,17 +360,24 @@ export function useCanvasTools(
       const s = useEditor.getState();
 
       if (mode === "move" && startLayer) {
-        s.updateLayer(startLayer.id, { x: startLayer.x + (p.x - start.x), y: startLayer.y + (p.y - start.y) });
+        s.updateLayer(startLayer.id, {
+          x: startLayer.x + (p.x - start.x),
+          y: startLayer.y + (p.y - start.y),
+        });
       } else if (mode === "rotate" && startLayer) {
         const a0 = Math.atan2(start.y - startLayer.y, start.x - startLayer.x);
         const a1 = Math.atan2(p.y - startLayer.y, p.x - startLayer.x);
         const deg = ((a1 - a0) * 180) / Math.PI;
         s.updateLayer(startLayer.id, { rotation: startLayer.rotation + deg });
       } else if (mode === "scale" && startLayer) {
-        const d0 = Math.hypot(start.x - startLayer.x, start.y - startLayer.y) || 1;
+        const d0 =
+          Math.hypot(start.x - startLayer.x, start.y - startLayer.y) || 1;
         const d1 = Math.hypot(p.x - startLayer.x, p.y - startLayer.y);
         const k = Math.max(0.05, d1 / d0);
-        s.updateLayer(startLayer.id, { scaleX: startLayer.scaleX * k, scaleY: startLayer.scaleY * k });
+        s.updateLayer(startLayer.id, {
+          scaleX: startLayer.scaleX * k,
+          scaleY: startLayer.scaleY * k,
+        });
       } else if (mode === "lasso" || mode === "pen") {
         polyPoints.push(p);
       } else if (mode === "marquee") {
@@ -308,7 +394,40 @@ export function useCanvasTools(
       dragging = false;
       const s = useEditor.getState();
 
-      if ((mode === "lasso" || mode === "pen") && polyPoints.length > 2) {
+      if (mode === "lasso" && polyPoints.length > 2) {
+        const selImage = s.project.layers.find(
+          (l) =>
+            s.selectedIds.includes(l.id) &&
+            l.kind === "image" &&
+            l.src &&
+            l.mediaType !== "video",
+        );
+        if (selImage) {
+          const sampled = {
+            ...sampleLayer(selImage, s.currentFrame),
+            src: selImage.src!,
+          };
+          const local = polyPoints.map((pt) =>
+            contentToLayerLocal(sampled, pt),
+          );
+          try {
+            const next = await cutToPolygon(selImage.src!, local);
+            s.pushHistory();
+            s.updateLayer(selImage.id, { src: next });
+          } catch {
+            /* ignore */
+          }
+        } else {
+          const inside = s.project.layers
+            .filter((l) => l.kind === "image")
+            .filter((l) => {
+              const sampled = sampleLayer(l, s.currentFrame);
+              return pointInPolygon({ x: sampled.x, y: sampled.y }, polyPoints);
+            })
+            .map((l) => l.id);
+          s.select(inside);
+        }
+      } else if (mode === "pen" && polyPoints.length > 2) {
         const inside = s.project.layers
           .filter((l) => l.kind === "image")
           .filter((l) => {
@@ -319,18 +438,32 @@ export function useCanvasTools(
         s.select(inside);
       } else if (mode === "marquee" && polyPoints.length) {
         const end = polyPoints[polyPoints.length - 1];
-        const x0 = Math.min(start.x, end.x), x1 = Math.max(start.x, end.x);
-        const y0 = Math.min(start.y, end.y), y1 = Math.max(start.y, end.y);
+        const x0 = Math.min(start.x, end.x),
+          x1 = Math.max(start.x, end.x);
+        const y0 = Math.min(start.y, end.y),
+          y1 = Math.max(start.y, end.y);
         const inside = s.project.layers
           .filter((l) => l.kind === "image")
           .filter((l) => {
             const sampled = sampleLayer(l, s.currentFrame);
-            return sampled.x >= x0 && sampled.x <= x1 && sampled.y >= y0 && sampled.y <= y1;
+            return (
+              sampled.x >= x0 &&
+              sampled.x <= x1 &&
+              sampled.y >= y0 &&
+              sampled.y <= y1
+            );
           })
           .map((l) => l.id);
         if (inside.length) s.select(inside);
-      } else if ((mode === "brush" || mode === "eraser") && startLayer && startLayer.src && brushStroke.length) {
-        const local = brushStroke.map((pt) => contentToLayerLocal(startLayer!, pt));
+      } else if (
+        (mode === "brush" || mode === "eraser") &&
+        startLayer &&
+        startLayer.src &&
+        brushStroke.length
+      ) {
+        const local = brushStroke.map((pt) =>
+          contentToLayerLocal(startLayer!, pt),
+        );
         try {
           const brushSize = 24;
           const next = await applyBrushStroke(
@@ -341,7 +474,9 @@ export function useCanvasTools(
           );
           s.pushHistory();
           s.updateLayer(startLayer.id, { src: next });
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
 
       mode = null;

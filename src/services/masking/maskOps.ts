@@ -33,6 +33,32 @@ export async function cropToBounds(src: string, bbox: BBox): Promise<string> {
 }
 
 /**
+ * Non-destructive lasso cut. Keeps pixels inside `path` (in mask-local pixel
+ * coords), makes everything outside transparent. Returns a new PNG data URL
+ * with the same dimensions as the source image so the layer's width/height,
+ * anchor and transform stay valid.
+ */
+export async function cutToPolygon(
+  src: string,
+  path: Array<{ x: number; y: number }>,
+): Promise<string> {
+  if (path.length < 3) return src;
+  const img = await loadImage(src);
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.save();
+  ctx.beginPath();
+  path.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(img, 0, 0);
+  ctx.restore();
+  return canvas.toDataURL("image/png");
+}
+
+/**
  * Intersect a full-image mask (RGBA cutout of the whole subject) with a
  * body-part bbox. Returns a cropped PNG containing only the part's pixels,
  * preserving transparency.
