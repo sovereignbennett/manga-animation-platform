@@ -1,5 +1,13 @@
 import { useEffect, useRef } from "react";
-import { Application, Assets, Container, Sprite, Graphics, Texture, Rectangle } from "pixi.js";
+import {
+  Application,
+  Assets,
+  Container,
+  Sprite,
+  Graphics,
+  Texture,
+  Rectangle,
+} from "pixi.js";
 import { GlowFilter, RGBSplitFilter } from "pixi-filters";
 import { BlurFilter, ColorMatrixFilter } from "pixi.js";
 import { useEditor, sampleLayer, type Layer } from "@/store/editorStore";
@@ -51,7 +59,10 @@ export function CanvasStage() {
         backgroundAlpha: 1,
         preserveDrawingBuffer: true,
       });
-      if (disposed) { app.destroy(true, { children: true }); return; }
+      if (disposed) {
+        app.destroy(true, { children: true });
+        return;
+      }
       hostRef.current!.appendChild(app.canvas);
       app.canvas.style.display = "block";
 
@@ -79,9 +90,12 @@ export function CanvasStage() {
       drawFrameGuide();
       renderLayers();
 
-      const onResize = () => { drawGrid(); };
+      const onResize = () => {
+        drawGrid();
+      };
       window.addEventListener("resize", onResize);
-      (app as unknown as { _cleanup?: () => void })._cleanup = () => window.removeEventListener("resize", onResize);
+      (app as unknown as { _cleanup?: () => void })._cleanup = () =>
+        window.removeEventListener("resize", onResize);
 
       // Register frame renderer for export pipeline
       const unregister = registerFrameRenderer(async (frame, opts) => {
@@ -100,7 +114,10 @@ export function CanvasStage() {
       }
       // Cleanup videos
       for (const e of spritesRef.current.values()) {
-        if (e.video) { e.video.pause(); e.video.src = ""; }
+        if (e.video) {
+          e.video.pause();
+          e.video.src = "";
+        }
       }
       appRef.current = null;
       worldRef.current = null;
@@ -112,7 +129,13 @@ export function CanvasStage() {
 
   useEffect(() => {
     const unsub = useEditor.subscribe(
-      (s) => ({ p: s.project, sel: s.selectedIds, zoom: s.zoom, pan: s.pan, f: s.currentFrame }),
+      (s) => ({
+        p: s.project,
+        sel: s.selectedIds,
+        zoom: s.zoom,
+        pan: s.pan,
+        f: s.currentFrame,
+      }),
       () => renderLayers(),
     );
     return unsub;
@@ -126,8 +149,10 @@ export function CanvasStage() {
     const size = 4000;
     const step = 100;
     g.setStrokeStyle({ width: 1, color: 0x2a2a34, alpha: 0.6 });
-    for (let x = -size; x <= size; x += step) g.moveTo(x, -size).lineTo(x, size);
-    for (let y = -size; y <= size; y += step) g.moveTo(-size, y).lineTo(size, y);
+    for (let x = -size; x <= size; x += step)
+      g.moveTo(x, -size).lineTo(x, size);
+    for (let y = -size; y <= size; y += step)
+      g.moveTo(-size, y).lineTo(size, y);
     g.stroke();
     g.setStrokeStyle({ width: 2, color: 0xd44dc9, alpha: 0.7 });
     g.moveTo(-20, 0).lineTo(20, 0);
@@ -146,51 +171,84 @@ export function CanvasStage() {
     g.rect(-w / 2, -h / 2, w, h).stroke();
   };
 
-  const ensureSpriteForLayer = async (rawLayer: Layer): Promise<SpriteEntry | null> => {
-    let entry = spritesRef.current.get(rawLayer.id);
+  const pendingRef = useRef<Map<string, Promise<SpriteEntry | null>>>(
+    new Map(),
+  );
+
+  const ensureSpriteForLayer = async (
+    rawLayer: Layer,
+  ): Promise<SpriteEntry | null> => {
+    const existing = spritesRef.current.get(rawLayer.id);
     if (!rawLayer.src) return null;
 
-    // Reload texture if the layer's source bitmap changed (brush/eraser edits).
-    if (entry && entry.src !== rawLayer.src && rawLayer.mediaType !== "video") {
+    if (
+      existing &&
+      existing.src !== rawLayer.src &&
+      rawLayer.mediaType !== "video"
+    ) {
       try {
         const tex = await Assets.load(rawLayer.src);
-        entry.sprite.texture = tex;
-        entry.src = rawLayer.src;
-      } catch { /* ignore */ }
-    }
-    if (entry) return entry;
-
-    try {
-      if (rawLayer.mediaType === "video") {
-        const video = document.createElement("video");
-        video.src = rawLayer.src;
-        video.crossOrigin = "anonymous";
-        video.muted = true;
-        video.playsInline = true;
-        video.loop = false;
-        await new Promise<void>((res, rej) => {
-          video.onloadeddata = () => res();
-          video.onerror = () => rej(new Error("video load failed"));
-        });
-        const tex = Texture.from(video);
-        const sp = new Sprite(tex);
-        entry = { sprite: sp, src: rawLayer.src, video };
-      } else {
-        const tex = await Assets.load(rawLayer.src);
-        const sp = new Sprite(tex);
-        entry = { sprite: sp, src: rawLayer.src };
+        existing.sprite.texture = tex;
+        existing.src = rawLayer.src;
+      } catch {
+        /* ignore */
       }
-      spritesRef.current.set(rawLayer.id, entry);
-      contentRef.current?.addChild(entry.sprite);
-      return entry;
-    } catch {
-      return null;
     }
+    if (existing) return existing;
+
+    const inFlight = pendingRef.current.get(rawLayer.id);
+    if (inFlight) return inFlight;
+
+    const promise = (async (): Promise<SpriteEntry | null> => {
+      try {
+        let entry: SpriteEntry;
+        if (rawLayer.mediaType === "video") {
+          const video = document.createElement("video");
+          video.src = rawLayer.src!;
+          video.crossOrigin = "anonymous";
+          video.muted = true;
+          video.playsInline = true;
+          video.loop = false;
+          await new Promise<void>((res, rej) => {
+            video.onloadeddata = () => res();
+            video.onerror = () => rej(new Error("video load failed"));
+          });
+          const tex = Texture.from(video);
+          const sp = new Sprite(tex);
+          entry = { sprite: sp, src: rawLayer.src!, video };
+        } else {
+          const tex = await Assets.load(rawLayer.src!);
+          const sp = new Sprite(tex);
+          entry = { sprite: sp, src: rawLayer.src! };
+        }
+        spritesRef.current.set(rawLayer.id, entry);
+        contentRef.current?.addChild(entry.sprite);
+        return entry;
+      } catch {
+        return null;
+      } finally {
+        pendingRef.current.delete(rawLayer.id);
+      }
+    })();
+
+    pendingRef.current.set(rawLayer.id, promise);
+    return promise;
   };
 
-  const applyEffects = (entry: SpriteEntry, layer: Layer, currentFrame: number) => {
-    const filters: (BlurFilter | GlowFilter | RGBSplitFilter | ColorMatrixFilter)[] = [];
-    let shakeDx = 0, shakeDy = 0, shakeRot = 0;
+  const applyEffects = (
+    entry: SpriteEntry,
+    layer: Layer,
+    currentFrame: number,
+  ) => {
+    const filters: (
+      | BlurFilter
+      | GlowFilter
+      | RGBSplitFilter
+      | ColorMatrixFilter
+    )[] = [];
+    let shakeDx = 0,
+      shakeDy = 0,
+      shakeRot = 0;
     let impactScale = 1;
     let flashAmount = 0;
 
@@ -198,15 +256,24 @@ export function CanvasStage() {
       if (!eff.enabled) continue;
       switch (eff.kind) {
         case "glow": {
-          if (!entry.glow) entry.glow = new GlowFilter({ distance: 15, outerStrength: 4, innerStrength: 0, color: 0xffffff, quality: 0.3 });
+          if (!entry.glow)
+            entry.glow = new GlowFilter({
+              distance: 15,
+              outerStrength: 4,
+              innerStrength: 0,
+              color: 0xffffff,
+              quality: 0.3,
+            });
           entry.glow.outerStrength = eff.strength;
           entry.glow.innerStrength = eff.innerStrength;
-          entry.glow.color = parseInt(eff.color.replace("#", ""), 16) || 0xffffff;
+          entry.glow.color =
+            parseInt(eff.color.replace("#", ""), 16) || 0xffffff;
           filters.push(entry.glow);
           break;
         }
         case "motionBlur": {
-          if (!entry.blur) entry.blur = new BlurFilter({ strength: eff.amount, quality: 2 });
+          if (!entry.blur)
+            entry.blur = new BlurFilter({ strength: eff.amount, quality: 2 });
           entry.blur.strength = eff.amount;
           filters.push(entry.blur);
           break;
@@ -261,7 +328,10 @@ export function CanvasStage() {
 
     world.scale.set(zoom);
     const app = appRef.current!;
-    world.position.set(app.screen.width / 2 + pan.x, app.screen.height / 2 + pan.y);
+    world.position.set(
+      app.screen.width / 2 + pan.x,
+      app.screen.height / 2 + pan.y,
+    );
     drawFrameGuide();
 
     // Remove stale sprites
@@ -270,7 +340,10 @@ export function CanvasStage() {
       if (!currentIds.has(id)) {
         content.removeChild(entry.sprite);
         entry.sprite.destroy();
-        if (entry.video) { entry.video.pause(); entry.video.src = ""; }
+        if (entry.video) {
+          entry.video.pause();
+          entry.video.src = "";
+        }
         spritesRef.current.delete(id);
       }
     }
@@ -287,9 +360,16 @@ export function CanvasStage() {
 
       // Sync video time to timeline playhead
       if (entry.video && rawLayer.videoDurationSec) {
-        const t = Math.min(rawLayer.videoDurationSec - 0.01, Math.max(0, currentFrame / fps));
+        const t = Math.min(
+          rawLayer.videoDurationSec - 0.01,
+          Math.max(0, currentFrame / fps),
+        );
         if (Math.abs(entry.video.currentTime - t) > 0.05) {
-          try { entry.video.currentTime = t; } catch { /* ignore */ }
+          try {
+            entry.video.currentTime = t;
+          } catch {
+            /* ignore */
+          }
         }
       }
 
@@ -299,14 +379,20 @@ export function CanvasStage() {
       sp.anchor.set(layer.anchorX, layer.anchorY);
       sp.position.set(layer.x + fx.shakeDx, layer.y + fx.shakeDy);
       sp.rotation = ((layer.rotation + fx.shakeRot) * Math.PI) / 180;
-      sp.scale.set(layer.scaleX * fx.impactScale, layer.scaleY * fx.impactScale);
+      sp.scale.set(
+        layer.scaleX * fx.impactScale,
+        layer.scaleY * fx.impactScale,
+      );
       sp.alpha = layer.opacity;
       sp.visible = layer.visible;
     }
   };
 
   /** Renders a single frame to an HTMLCanvasElement — used by the export pipeline. */
-  const renderOffscreen = async (frame: number, opts?: { transparent?: boolean; width?: number; height?: number }): Promise<HTMLCanvasElement> => {
+  const renderOffscreen = async (
+    frame: number,
+    opts?: { transparent?: boolean; width?: number; height?: number },
+  ): Promise<HTMLCanvasElement> => {
     const app = appRef.current;
     const content = contentRef.current;
     if (!app || !content) throw new Error("not ready");
@@ -328,22 +414,36 @@ export function CanvasStage() {
       const entry = await ensureSpriteForLayer(rawLayer);
       if (!entry) continue;
       if (entry.video && rawLayer.videoDurationSec) {
-        const t = Math.min(rawLayer.videoDurationSec - 0.01, Math.max(0, frame / fps));
+        const t = Math.min(
+          rawLayer.videoDurationSec - 0.01,
+          Math.max(0, frame / fps),
+        );
         try {
           entry.video.currentTime = t;
           await new Promise<void>((res) => {
-            const onSeek = () => { entry.video!.removeEventListener("seeked", onSeek); res(); };
+            const onSeek = () => {
+              entry.video!.removeEventListener("seeked", onSeek);
+              res();
+            };
             entry.video!.addEventListener("seeked", onSeek);
             setTimeout(() => res(), 200);
           });
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       const fx = applyEffects(entry, rawLayer, frame);
       const sp = entry.sprite;
       sp.anchor.set(layer.anchorX, layer.anchorY);
-      sp.position.set(layer.x + fx.shakeDx + outW / 2, layer.y + fx.shakeDy + outH / 2);
+      sp.position.set(
+        layer.x + fx.shakeDx + outW / 2,
+        layer.y + fx.shakeDy + outH / 2,
+      );
       sp.rotation = ((layer.rotation + fx.shakeRot) * Math.PI) / 180;
-      sp.scale.set(layer.scaleX * fx.impactScale, layer.scaleY * fx.impactScale);
+      sp.scale.set(
+        layer.scaleX * fx.impactScale,
+        layer.scaleY * fx.impactScale,
+      );
       sp.alpha = layer.opacity;
       sp.visible = layer.visible;
     }
@@ -373,8 +473,12 @@ export function CanvasStage() {
     let spaceDown = false;
     let last = { x: 0, y: 0 };
 
-    const onKeyDown = (e: KeyboardEvent) => { if (e.code === "Space") spaceDown = true; };
-    const onKeyUp = (e: KeyboardEvent) => { if (e.code === "Space") spaceDown = false; };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space") spaceDown = true;
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") spaceDown = false;
+    };
 
     const onDown = (e: PointerEvent) => {
       if ((e.pointerType === "mouse" && e.button === 1) || spaceDown) {
@@ -429,7 +533,10 @@ export function CanvasStage() {
   return (
     <div className="relative flex-1 min-w-0 min-h-0 checker-bg">
       <div ref={hostRef} className="absolute inset-0 touch-none" />
-      <canvas ref={overlayRef} className="pointer-events-none absolute inset-0" />
+      <canvas
+        ref={overlayRef}
+        className="pointer-events-none absolute inset-0"
+      />
       <CanvasHud />
     </div>
   );
@@ -448,15 +555,41 @@ function CanvasHud() {
       <div className="pointer-events-none absolute top-3 left-3 px-2.5 py-1 rounded-md bg-surface/70 backdrop-blur border border-border text-[11px] text-muted-foreground">
         <span className="text-foreground/80 capitalize">{tool}</span>
         <span className="mx-2 text-border-strong">·</span>
-        <span className="font-mono">{cw}×{ch}</span>
+        <span className="font-mono">
+          {cw}×{ch}
+        </span>
         <span className="mx-2 text-border-strong">·</span>
-        <span>Hold <kbd className="px-1 rounded bg-surface-2 text-[10px]">Space</kbd> to pan · scroll to zoom</span>
+        <span>
+          Hold{" "}
+          <kbd className="px-1 rounded bg-surface-2 text-[10px]">Space</kbd> to
+          pan · scroll to zoom
+        </span>
       </div>
       <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-surface/80 backdrop-blur border border-border px-1 py-1">
-        <button className="tool-btn !w-7 !h-7" onClick={() => setZoom(zoom / 1.2)}>−</button>
-        <div className="text-[11px] font-mono w-14 text-center">{Math.round(zoom * 100)}%</div>
-        <button className="tool-btn !w-7 !h-7" onClick={() => setZoom(zoom * 1.2)}>+</button>
-        <button className="tool-btn !w-7 !h-7 text-[10px]" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>Fit</button>
+        <button
+          className="tool-btn !w-7 !h-7"
+          onClick={() => setZoom(zoom / 1.2)}
+        >
+          −
+        </button>
+        <div className="text-[11px] font-mono w-14 text-center">
+          {Math.round(zoom * 100)}%
+        </div>
+        <button
+          className="tool-btn !w-7 !h-7"
+          onClick={() => setZoom(zoom * 1.2)}
+        >
+          +
+        </button>
+        <button
+          className="tool-btn !w-7 !h-7 text-[10px]"
+          onClick={() => {
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+          }}
+        >
+          Fit
+        </button>
       </div>
     </>
   );

@@ -11,7 +11,6 @@ export function createTextLayer(
   y: number,
   props: TextProps,
 ): string {
-    
   const { src, width, height } = renderText(props);
   const s = useEditor.getState();
   s.addImageLayer(
