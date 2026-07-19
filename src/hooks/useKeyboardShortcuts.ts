@@ -4,7 +4,7 @@ import { useEditor, type ToolId } from "@/store/editorStore";
 const TOOL_KEYS: Record<string, ToolId> = {
   v: "select", m: "move", r: "rotate", s: "scale",
   b: "brush", e: "eraser", l: "lasso", p: "pen",
-  w: "magic", c: "camera",
+  t: "text", w: "magic", c: "camera",
 };
 
 export function useKeyboardShortcuts() {

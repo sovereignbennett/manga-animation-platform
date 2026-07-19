@@ -11,12 +11,13 @@ export type SidebarPanel =
 export type ToolId =
   | "select" | "move" | "rotate" | "scale"
   | "brush" | "eraser" | "lasso" | "pen"
-  | "magic" | "camera";
+  | "text" | "magic" | "camera";
 
 export type BlendMode =
   | "normal" | "multiply" | "screen" | "overlay" | "add" | "lighten" | "darken";
 
 export interface Layer {
+  text: boolean;
   id: string;
   name: string;
   parentId: string | null;

@@ -1,33 +1,84 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
+import type { BodyPartKind, SegmentationResult } from "@/types/segmentation";
+import type {
+  AnimatableProp, EasingKind, Keyframes, AnimationPreset,
+} from "@/types/animation";
+import type { LayerEffect, EffectKind } from "@/types/effects";
 import { EFFECT_DEFAULTS } from "@/types/effects";
 import { ANIMATABLE_PROPS } from "@/types/animation";
 import { sampleProp, upsertKeyframe, removeKeyframeAt } from "@/services/animation/sampling";
-import { services } from "@/services";
-import { createEmptyProject } from "@/services/projects/emptyProject";
-import type {
-  AnimatableProp,
-  AnimationPreset,
-  EasingKind,
-  EffectKind,
-  HistoryEntry,
-  Keyframes,
-  Layer,
-  LayerEffect,
-  MagicCutCutout,
-  Project,
-  SegmentationResult,
-  SidebarPanel,
-  ToolId,
-} from "@/services/projects/types";
+import type { TextProps } from "@/services/text/renderText";
 
-export type {
-  BlendMode,
-  Layer,
-  Project,
-  SidebarPanel,
-  ToolId,
-} from "@/services/projects/types";
+export type SidebarPanel =
+  | "projects" | "assets" | "layers" | "groups"
+  | "magic" | "animation" | "effects" | "export" | "settings";
+
+export type ToolId =
+  | "select" | "move" | "rotate" | "scale"
+  | "brush" | "eraser" | "lasso" | "pen"
+  | "text" | "magic" | "camera";
+
+export type BlendMode =
+  | "normal" | "multiply" | "screen" | "overlay" | "add" | "lighten" | "darken";
+
+export interface Layer {
+  id: string;
+  name: string;
+  parentId: string | null; // group id
+  kind: "image" | "group";
+  /** Media type for image kind — controls sprite source. */
+  mediaType?: "image" | "video";
+  src?: string;                  // data URL for images / blob URL for video
+  /** Video-specific: intrinsic duration in seconds (populated on import). */
+  videoDurationSec?: number;
+  /** Optional soft mask (RGBA data URL, same size as src). Editable via brush/eraser. */
+  mask?: string;
+  /** Body part this layer represents (populated by Magic Cut). */
+  bodyPart?: BodyPartKind;
+  /** Confidence 0..1 from the AI provider. */
+  bodyPartConfidence?: number;
+  /** Suggested pivot in **layer-local pixel** coords (converted to anchor when applied). */
+  pivotSuggestion?: { x: number; y: number };
+  /** Id of the source layer this was cut from — enables non-destructive re-runs. */
+  sourceLayerId?: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  rotation: number;              // degrees
+  scaleX: number;
+  scaleY: number;
+  anchorX: number;               // 0..1
+  anchorY: number;               // 0..1
+  opacity: number;               // 0..1
+  blendMode: BlendMode;
+  visible: boolean;
+  locked: boolean;
+  /** Per-property keyframe tracks. Missing = property is static. */
+  keyframes?: Keyframes;
+  /** Effects stack (glow, motion blur, chromatic, shake, impact). */
+  effects?: LayerEffect[];
+  /** Text properties — present iff this image layer was created via the Text tool. */
+  text?: TextProps;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  layers: Layer[];
+  order: string[];               // top -> bottom paint order (last painted = top)
+  /** Output canvas resolution — used for exports and centered guide. */
+  canvasWidth: number;
+  canvasHeight: number;
+}
+
+interface HistoryEntry {
+  layers: Layer[];
+  order: string[];
+}
 
 interface EditorState {
   project: Project;
@@ -80,7 +131,20 @@ interface EditorState {
    * Non-destructive Magic Cut result application: hides the source layer,
    * creates one child layer per detected part (grouped), with pivots.
    */
-  applyMagicCut: (sourceLayerId: string, result: SegmentationResult, cutouts: MagicCutCutout[]) => void;
+  applyMagicCut: (sourceLayerId: string, result: SegmentationResult, cutouts: Array<{
+    partId: string;
+    src: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    anchorX: number;
+    anchorY: number;
+    bodyPart: BodyPartKind;
+    label: string;
+    confidence: number;
+    pivot: { x: number; y: number };
+  }>) => void;
 
   play: () => void;
   pause: () => void;
@@ -102,9 +166,34 @@ interface EditorState {
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+const emptyProject = (name = "Untitled Project"): Project => ({
+  id: uid(),
+  name,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+  layers: [],
+  order: [],
+  canvasWidth: 1080,
+  canvasHeight: 1920,
+});
+
+const STORAGE_KEY = "motioncut:project:v1";
+
+const loadProject = (): Project => {
+  if (typeof window === "undefined") return emptyProject();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return emptyProject();
+    const p = JSON.parse(raw) as Project;
+    return { ...emptyProject(), ...p, canvasWidth: p.canvasWidth ?? 1080, canvasHeight: p.canvasHeight ?? 1920 };
+  } catch {
+    return emptyProject();
+  }
+};
+
 export const useEditor = create<EditorState>()(
   subscribeWithSelector((set, get) => ({
-    project: createEmptyProject(),
+    project: emptyProject(),
     selectedIds: [],
     activeTool: "select",
     zoom: 1,
@@ -521,7 +610,7 @@ export const useEditor = create<EditorState>()(
 
     newProject: (name) => {
       set({
-        project: createEmptyProject(name),
+        project: emptyProject(name),
         selectedIds: [],
         history: { past: [], future: [] },
         currentFrame: 0,
@@ -568,33 +657,20 @@ export const useEditor = create<EditorState>()(
   })),
 );
 
-// Autosave
+// Autosave (client only)
 if (typeof window !== "undefined") {
   // Hydrate once
-  const stored = services.projects.loadInitialProject();
-  if (stored instanceof Promise) {
-    void stored.then((project) => {
-      if (project && project.layers.length > 0) useEditor.setState({ project });
-    });
-  } else if (stored && stored.layers.length > 0) {
+  const stored = loadProject();
+  if (stored.layers.length > 0) {
     useEditor.setState({ project: stored });
   }
-
   let t: ReturnType<typeof setTimeout> | null = null;
   useEditor.subscribe(
     (s) => s.project,
     (project) => {
       if (t) clearTimeout(t);
       t = setTimeout(() => {
-        void services.projects.saveProject(project)
-          .then((savedProject) => {
-            if (savedProject && savedProject.id !== useEditor.getState().project.id) {
-              useEditor.setState({ project: savedProject });
-            }
-          })
-          .catch(() => {
-            // Match the old local autosave behavior: persistence failures do not interrupt editing.
-          });
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(project)); } catch { /* ignore */ }
       }, 400);
     },
   );
@@ -616,3 +692,4 @@ export function sampleLayer(layer: Layer, frame: number): Layer {
   }
   return out;
 }
+
