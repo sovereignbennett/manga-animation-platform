@@ -18,7 +18,7 @@ export interface TextProps {
 }
 
 export const DEFAULT_TEXT_PROPS: TextProps = {
-  content: "Chat",
+  content: "Edit Text",
   fontFamily: "Helvetica",
   fontSize: 96,
   bold: false,
