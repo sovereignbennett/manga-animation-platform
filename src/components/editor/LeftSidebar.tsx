@@ -205,12 +205,28 @@ function ShakesPanel() {
   const layer = useEditor((s) => s.project.layers.find((l) => l.id === selectedId));
   const addEffect = useEditor((s) => s.addEffect);
   const updateEffect = useEditor((s) => s.updateEffect);
+  const removeEffect = useEditor((s) => s.removeEffect);
+  const setSelectedEffect = useEditor((s) => s.setSelectedEffect);
+
+  const shakeIndex = layer?.effects?.findIndex((effect) => effect.kind === "shake") ?? -1;
+  const activeShake = shakeIndex >= 0 ? layer?.effects?.[shakeIndex] : undefined;
 
   const applyShake = (preset: (typeof BUILTIN_SHAKES)[number]) => {
     if (!layer || layer.kind !== "image") return;
-    addEffect(layer.id, "shake");
-    const nextLayer = useEditor.getState().project.layers.find((l) => l.id === layer.id);
-    const index = (nextLayer?.effects?.length ?? 1) - 1;
+
+    if (activeShake?.kind === "shake" && activeShake.presetId === preset.id && shakeIndex >= 0) {
+      removeEffect(layer.id, shakeIndex);
+      setSelectedEffect(null);
+      return;
+    }
+
+    let index = shakeIndex;
+    if (index < 0) {
+      addEffect(layer.id, "shake");
+      const nextLayer = useEditor.getState().project.layers.find((l) => l.id === layer.id);
+      index = (nextLayer?.effects?.length ?? 1) - 1;
+    }
+
     updateEffect(layer.id, index, {
       presetId: preset.id,
       profile: preset.params.profile,
@@ -228,6 +244,7 @@ function ShakesPanel() {
       seed: preset.params.seed,
       easing: preset.params.easing,
     });
+    setSelectedEffect({ layerId: layer.id, index });
   };
 
   return (
@@ -239,10 +256,25 @@ function ShakesPanel() {
             key={preset.id}
             disabled={!layer}
             onClick={() => applyShake(preset)}
-            className="rounded-md border border-border bg-surface-2/40 px-2 py-2 text-left text-xs hover:border-primary/40 disabled:opacity-40"
-            title={preset.tags?.join(", ")}
+            className={cn(
+              "relative rounded-md border px-2 py-2 text-left text-xs transition disabled:opacity-40",
+              activeShake?.kind === "shake" && activeShake.presetId === preset.id
+                ? "border-primary bg-primary/20 text-foreground shadow-[0_0_12px_-6px_var(--primary-glow)]"
+                : "border-border bg-surface-2/40 hover:border-primary/40",
+            )}
+            title={activeShake?.kind === "shake" && activeShake.presetId === preset.id ? "Click to turn this shake off" : preset.tags?.join(", ")}
           >
-            <div className="font-medium">{preset.name}</div>
+            {activeShake?.kind === "shake" && activeShake.presetId === preset.id && (
+              <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-primary" />
+            )}
+            <div className="flex items-center gap-1">
+              <span className="font-medium">{preset.name}</span>
+              {activeShake?.kind === "shake" && activeShake.presetId === preset.id && (
+                <span className="ml-auto rounded-sm bg-primary px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-primary-foreground">
+                  On
+                </span>
+              )}
+            </div>
             <div className="text-[10px] text-muted-foreground">{preset.params.frequency}hz · {preset.params.x}/{preset.params.y}px</div>
           </button>
         ))}
