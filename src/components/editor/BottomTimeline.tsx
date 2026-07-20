@@ -8,6 +8,7 @@ import {
   Lock,
   Pause,
   Play,
+  Repeat2,
   SkipBack,
   SkipForward,
   Trash2,
@@ -63,6 +64,8 @@ const formatFrameTime = (frame: number, fps: number) => {
 
 export function BottomTimeline() {
   const playing = useEditor((s) => s.playing);
+  const loopPlayback = useEditor((s) => s.loopPlayback);
+  const previewPlaybackRate = useEditor((s) => s.previewPlaybackRate);
   const currentFrame = useEditor((s) => s.currentFrame);
   const totalFrames = useEditor((s) => s.totalFrames);
   const fps = useEditor((s) => s.fps);
@@ -71,6 +74,8 @@ export function BottomTimeline() {
   const toggleRecord = useEditor((s) => s.toggleRecord);
   const play = useEditor((s) => s.play);
   const pause = useEditor((s) => s.pause);
+  const toggleLoopPlayback = useEditor((s) => s.toggleLoopPlayback);
+  const setPreviewPlaybackRate = useEditor((s) => s.setPreviewPlaybackRate);
   const setFrame = useEditor((s) => s.setFrame);
   const setTimelineZoom = useEditor((s) => s.setTimelineZoom);
   const allLayers = useEditor((s) => s.project.layers);
@@ -103,14 +108,18 @@ export function BottomTimeline() {
     const step = (t: number) => {
       if (!lastRef.current) lastRef.current = t;
       const dt = t - lastRef.current;
-      const framesToAdvance = Math.floor((dt / 1000) * fps);
+      const framesToAdvance = Math.floor((dt / 1000) * fps * previewPlaybackRate);
       if (framesToAdvance > 0) {
         lastRef.current = t;
         const s = useEditor.getState();
         const next = s.currentFrame + framesToAdvance;
         if (next >= s.totalFrames) {
-          s.setFrame(s.totalFrames);
-          s.pause();
+          if (s.loopPlayback) {
+            s.setFrame(0);
+          } else {
+            s.setFrame(s.totalFrames);
+            s.pause();
+          }
         } else {
           s.setFrame(next);
         }
@@ -122,7 +131,7 @@ export function BottomTimeline() {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       lastRef.current = 0;
     };
-  }, [playing, fps]);
+  }, [playing, fps, previewPlaybackRate]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -272,6 +281,13 @@ export function BottomTimeline() {
           </button>
           <button className="tool-btn" onClick={() => setFrame(currentFrame + 1)} title="Next frame"><SkipForward className="w-4 h-4" /></button>
           <button className="tool-btn" onClick={() => setFrame(totalFrames)} title="End"><ChevronsRight className="w-4 h-4" /></button>
+          <button
+            className={cn("tool-btn", loopPlayback && "tool-btn-active text-primary")}
+            onClick={toggleLoopPlayback}
+            title={loopPlayback ? "Loop on" : "Loop off"}
+          >
+            <Repeat2 className="w-4 h-4" />
+          </button>
         </div>
 
         <button
@@ -291,7 +307,25 @@ export function BottomTimeline() {
         <div className="ml-2 px-2.5 py-1 rounded-md bg-surface-2 border border-border font-mono text-xs">
           <span className="text-accent">{formatFrameTime(currentFrame, fps)}</span>
           <span className="text-muted-foreground"> / {totalDuration}</span>
-          <span className="ml-2 text-[10px] text-muted-foreground uppercase tracking-wider">f {currentFrame} · {fps}fps</span>
+          <span className="ml-2 text-[10px] text-muted-foreground uppercase tracking-wider">frame {currentFrame} · {fps}fps</span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {[0.25, 0.5, 1, 2, 4].map((rate) => (
+            <button
+              key={rate}
+              onClick={() => setPreviewPlaybackRate(rate)}
+              className={cn(
+                "h-7 px-1.5 rounded-md border text-[10px] font-mono",
+                Math.abs(previewPlaybackRate - rate) < 0.01
+                  ? "border-primary/50 bg-primary/15 text-primary"
+                  : "border-border bg-surface-2 text-muted-foreground hover:text-foreground",
+              )}
+              title="Preview playback speed"
+            >
+              {rate}x
+            </button>
+          ))}
         </div>
 
         <div className="ml-auto flex items-center gap-1">

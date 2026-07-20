@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Diamond, Eye, EyeOff, Plus, Trash2 } from "lucide-react";
 import {
   getLayerEndFrame,
@@ -8,8 +9,14 @@ import {
 } from "@/store/editorStore";
 import { cn } from "@/lib/utils";
 import type { AnimatableProp } from "@/types/animation";
-import type { EffectKind, LayerEffect, ShakeEffect } from "@/types/effects";
-import { EFFECT_DEFAULTS, EFFECT_LABELS, normalizeShakeParams } from "@/types/effects";
+import type { EffectKind, LayerEffect, ShakeAnimatableProp, ShakeEffect } from "@/types/effects";
+import {
+  EFFECT_DEFAULTS,
+  EFFECT_LABELS,
+  normalizeShakeParams,
+  removeEffectKeyframe,
+  upsertEffectKeyframe,
+} from "@/types/effects";
 import { renderText, SYSTEM_FONTS, type TextProps } from "@/services/text/renderText";
 import { ShakeRegistry, type ShakeParams } from "@/services/shakes";
 import type { EasingName } from "@/utils/easing";
@@ -327,8 +334,11 @@ export function RightInspector() {
                 <button onClick={() => moveFocusedEffect(-1)} className="h-8 px-2 rounded-md border border-border bg-surface-2 text-xs">Up</button>
                 <button onClick={() => moveFocusedEffect(1)} className="h-8 px-2 rounded-md border border-border bg-surface-2 text-xs">Down</button>
               </div>
-              <EffectControls
+              <EffectInspectorHost
                 effect={focusedEffect}
+                layer={layer}
+                effectIndex={selectedEffect.index}
+                currentFrame={currentFrame}
                 onChange={(patch) => updateEffect(layer.id, selectedEffect.index, patch)}
               />
               <div className="grid grid-cols-2 gap-1">
@@ -371,45 +381,69 @@ function ToggleButton({ active, onClick, children }: { active: boolean; onClick:
   );
 }
 
-function EffectControls({ effect, onChange }: { effect: LayerEffect; onChange: (patch: Partial<LayerEffect>) => void }) {
-  switch (effect.kind) {
-    case "glow":
-      return (
-        <div className="space-y-2">
-          <Slider value={effect.strength} min={0} max={12} step={0.1} onChange={(v) => onChange({ strength: v } as Partial<LayerEffect>)} valueLabel={effect.strength.toFixed(1)} />
-          <NumField label="Inner Strength" value={effect.innerStrength} step={0.1} onChange={(v) => onChange({ innerStrength: Math.max(0, v) } as Partial<LayerEffect>)} />
-          <NumField label="Quality" value={effect.quality} step={0.1} onChange={(v) => onChange({ quality: Math.max(0.1, Math.min(1, v)) } as Partial<LayerEffect>)} />
-          <label className="block">
-            <div className="text-[10px] text-muted-foreground mb-1">Color</div>
-            <input type="color" value={effect.color} onChange={(e) => onChange({ color: e.target.value } as Partial<LayerEffect>)} className="w-full h-8 rounded-md border border-border bg-surface-2 px-1" />
-          </label>
-        </div>
-      );
-    case "motionBlur":
-      return <NumField label="Amount" value={effect.amount} step={0.5} onChange={(v) => onChange({ amount: Math.max(0, v) } as Partial<LayerEffect>)} />;
-    case "chromatic":
-      return (
-        <Row>
-          <NumField label="Offset" value={effect.offset} step={0.5} onChange={(v) => onChange({ offset: Math.max(0, v) } as Partial<LayerEffect>)} />
-          <NumField label="Angle" value={effect.angle} step={1} onChange={(v) => onChange({ angle: v } as Partial<LayerEffect>)} />
-        </Row>
-      );
-    case "impact":
-      return (
-        <div className="space-y-2">
-          <Row>
-            <NumField label="Frame" value={effect.frame} onChange={(v) => onChange({ frame: Math.max(0, Math.round(v)) } as Partial<LayerEffect>)} />
-            <NumField label="Duration" value={effect.duration} onChange={(v) => onChange({ duration: Math.max(1, Math.round(v)) } as Partial<LayerEffect>)} />
-          </Row>
-          <Row>
-            <NumField label="Scale" value={effect.scale} step={0.05} onChange={(v) => onChange({ scale: Math.max(0, v) } as Partial<LayerEffect>)} />
-            <NumField label="Flash" value={effect.flash} step={0.05} onChange={(v) => onChange({ flash: Math.max(0, Math.min(1, v)) } as Partial<LayerEffect>)} />
-          </Row>
-        </div>
-      );
-    case "shake":
-      return <ShakeControls effect={effect} onChange={onChange} />;
-  }
+interface EffectEditorProps<T extends LayerEffect = LayerEffect> {
+  effect: T;
+  layer: Layer;
+  effectIndex: number;
+  currentFrame: number;
+  onChange: (patch: Partial<LayerEffect>) => void;
+}
+
+const EFFECT_EDITORS: {
+  [K in EffectKind]: React.ComponentType<EffectEditorProps<Extract<LayerEffect, { kind: K }>>>;
+} = {
+  glow: GlowEffectEditor,
+  motionBlur: MotionBlurEffectEditor,
+  chromatic: ChromaticEffectEditor,
+  impact: ImpactEffectEditor,
+  shake: ShakeEffectEditor,
+};
+
+function EffectInspectorHost(props: EffectEditorProps) {
+  const Editor = EFFECT_EDITORS[props.effect.kind] as React.ComponentType<EffectEditorProps>;
+  return <Editor {...props} />;
+}
+
+function GlowEffectEditor({ effect, onChange }: EffectEditorProps<Extract<LayerEffect, { kind: "glow" }>>) {
+  return (
+    <div className="space-y-2">
+      <Slider value={effect.strength} min={0} max={12} step={0.1} onChange={(v) => onChange({ strength: v } as Partial<LayerEffect>)} valueLabel={effect.strength.toFixed(1)} />
+      <NumField label="Inner Strength" value={effect.innerStrength} step={0.1} onChange={(v) => onChange({ innerStrength: Math.max(0, v) } as Partial<LayerEffect>)} />
+      <NumField label="Quality" value={effect.quality} step={0.1} onChange={(v) => onChange({ quality: Math.max(0.1, Math.min(1, v)) } as Partial<LayerEffect>)} />
+      <label className="block">
+        <div className="text-[10px] text-muted-foreground mb-1">Color</div>
+        <input type="color" value={effect.color} onChange={(e) => onChange({ color: e.target.value } as Partial<LayerEffect>)} className="w-full h-8 rounded-md border border-border bg-surface-2 px-1" />
+      </label>
+    </div>
+  );
+}
+
+function MotionBlurEffectEditor({ effect, onChange }: EffectEditorProps<Extract<LayerEffect, { kind: "motionBlur" }>>) {
+  return <NumField label="Amount" value={effect.amount} step={0.5} onChange={(v) => onChange({ amount: Math.max(0, v) } as Partial<LayerEffect>)} />;
+}
+
+function ChromaticEffectEditor({ effect, onChange }: EffectEditorProps<Extract<LayerEffect, { kind: "chromatic" }>>) {
+  return (
+    <Row>
+      <NumField label="Offset" value={effect.offset} step={0.5} onChange={(v) => onChange({ offset: Math.max(0, v) } as Partial<LayerEffect>)} />
+      <NumField label="Angle" value={effect.angle} step={1} onChange={(v) => onChange({ angle: v } as Partial<LayerEffect>)} />
+    </Row>
+  );
+}
+
+function ImpactEffectEditor({ effect, onChange }: EffectEditorProps<Extract<LayerEffect, { kind: "impact" }>>) {
+  return (
+    <div className="space-y-2">
+      <Row>
+        <NumField label="Frame" value={effect.frame} onChange={(v) => onChange({ frame: Math.max(0, Math.round(v)) } as Partial<LayerEffect>)} />
+        <NumField label="Duration" value={effect.duration} onChange={(v) => onChange({ duration: Math.max(1, Math.round(v)) } as Partial<LayerEffect>)} />
+      </Row>
+      <Row>
+        <NumField label="Scale" value={effect.scale} step={0.05} onChange={(v) => onChange({ scale: Math.max(0, v) } as Partial<LayerEffect>)} />
+        <NumField label="Flash" value={effect.flash} step={0.05} onChange={(v) => onChange({ flash: Math.max(0, Math.min(1, v)) } as Partial<LayerEffect>)} />
+      </Row>
+    </div>
+  );
 }
 
 function patchFromShakeParams(params: ShakeParams, presetId?: string): Partial<ShakeEffect> {
@@ -432,50 +466,125 @@ function patchFromShakeParams(params: ShakeParams, presetId?: string): Partial<S
   };
 }
 
-function ShakeControls({ effect, onChange }: { effect: ShakeEffect; onChange: (patch: Partial<LayerEffect>) => void }) {
+const SHAKE_DESCRIPTIONS: Record<string, string> = {
+  impact: "Fast camera hit with quick decay and a tiny rebound.",
+  punch: "Short horizontal hit with a snappy return.",
+  earthquake: "Heavy unstable low-frequency movement and bursts.",
+  camera: "Subtle human handheld drift with tiny rotation.",
+  handheld: "Smooth natural drift for living stills.",
+  whip: "Directional whip pan with elastic overshoot.",
+  bass: "Musical pulse tied to beat-like movement.",
+  glitch: "Digital jumps, freezes and discontinuous jitter.",
+  bounce: "Vertical spring with diminishing bounces.",
+  micro: "Barely visible high-frequency movement.",
+  velocity: "Shake intensity shaped by motion velocity.",
+  anime: "Anticipation, impact hold and recovery.",
+};
+
+function ShakeEffectEditor({ effect, currentFrame, onChange }: EffectEditorProps<ShakeEffect>) {
   const params = normalizeShakeParams(effect);
   const presets = ShakeRegistry.list();
+  const hoverRestoreRef = useRef<ShakeEffect | null>(null);
   const set = (patch: Partial<ShakeParams>) => {
     const next = { ...params, ...patch };
     onChange(patchFromShakeParams(next, effect.presetId) as Partial<LayerEffect>);
   };
+  const setExtra = (patch: Partial<ShakeEffect>) => onChange(patch as Partial<LayerEffect>);
+  const keyframeParam = (prop: ShakeAnimatableProp, value: number) => {
+    const track = effect.keyframes?.[prop] ?? [];
+    const exists = track.some((kf) => kf.frame === currentFrame);
+    const nextTrack = exists
+      ? removeEffectKeyframe(track, currentFrame)
+      : upsertEffectKeyframe(track, currentFrame, value);
+    onChange({
+      keyframes: {
+        ...(effect.keyframes ?? {}),
+        [prop]: nextTrack.length > 0 ? nextTrack : undefined,
+      },
+    } as Partial<LayerEffect>);
+  };
+  const selectedPreset = effect.presetId ? ShakeRegistry.get(effect.presetId) : undefined;
 
   return (
-    <div className="space-y-2">
-      <label className="block">
+    <div className="space-y-3">
+      <div className="rounded-md border border-border bg-surface-2/40 p-2">
+        <div className="flex items-center gap-2">
+          <div className="text-xs font-semibold">{selectedPreset?.name ?? "Custom Shake"}</div>
+          <div className="ml-auto rounded-sm border border-primary/40 bg-primary/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-primary">
+            Current
+          </div>
+        </div>
+        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+          {selectedPreset ? SHAKE_DESCRIPTIONS[selectedPreset.id] ?? "Customisable camera motion." : "Manual shake settings."}
+        </p>
+        <div className="mt-2 h-8 overflow-hidden rounded bg-surface-3">
+          <div className="h-full w-1/2 rounded bg-primary/60 animate-pulse" />
+        </div>
+      </div>
+      <div>
         <div className="text-[10px] text-muted-foreground mb-1">Preset</div>
-        <select
-          value={effect.presetId ?? ""}
-          onChange={(e) => {
-            const preset = ShakeRegistry.get(e.target.value);
-            if (preset) onChange(patchFromShakeParams(preset.params, preset.id) as Partial<LayerEffect>);
-          }}
-          className="w-full h-8 rounded-md border border-border bg-surface-2 px-2 text-xs outline-none focus:border-primary/60"
-        >
-          <option value="">Custom</option>
-          {presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
-        </select>
-      </label>
+        <div className="grid grid-cols-2 gap-1">
+          {presets.map((preset) => (
+            <ShakePresetButton
+              key={preset.id}
+              active={effect.presetId === preset.id}
+              name={preset.name}
+              description={SHAKE_DESCRIPTIONS[preset.id]}
+              onPreview={() => {
+                hoverRestoreRef.current = effect;
+                onChange(patchFromShakeParams(preset.params, preset.id) as Partial<LayerEffect>);
+              }}
+              onRestore={() => {
+                if (hoverRestoreRef.current) {
+                  onChange(hoverRestoreRef.current as Partial<LayerEffect>);
+                  hoverRestoreRef.current = null;
+                }
+              }}
+              onCommit={() => {
+                hoverRestoreRef.current = null;
+                onChange(patchFromShakeParams(preset.params, preset.id) as Partial<LayerEffect>);
+              }}
+            />
+          ))}
+        </div>
+      </div>
       <Row>
-        <NumField label="Intensity" value={params.intensity} step={0.1} onChange={(v) => set({ intensity: Math.max(0, v) })} />
-        <NumField label="Speed" value={params.speed} step={0.1} onChange={(v) => set({ speed: Math.max(0, v) })} />
+        <ShakeNum label="Intensity" prop="intensity" value={params.intensity} step={0.1} currentFrame={currentFrame} effect={effect} onKf={keyframeParam} onChange={(v) => set({ intensity: Math.max(0, v) })} />
+        <ShakeNum label="Speed" prop="speed" value={params.speed} step={0.1} currentFrame={currentFrame} effect={effect} onKf={keyframeParam} onChange={(v) => set({ speed: Math.max(0, v) })} />
       </Row>
       <Row>
-        <NumField label="Frequency" value={params.frequency} step={0.5} onChange={(v) => set({ frequency: Math.max(0, v) })} />
+        <ShakeNum label="Velocity" prop="velocity" value={effect.velocity ?? 1} step={0.1} currentFrame={currentFrame} effect={effect} onKf={keyframeParam} onChange={(v) => setExtra({ velocity: Math.max(0, v) })} />
+        <ShakeNum label="Frequency" prop="frequency" value={params.frequency} step={0.5} currentFrame={currentFrame} effect={effect} onKf={keyframeParam} onChange={(v) => set({ frequency: Math.max(0, v) })} />
+      </Row>
+      <Row>
         <NumField label="Randomness" value={params.randomness} step={0.05} onChange={(v) => set({ randomness: Math.max(0, Math.min(1, v)) })} />
+        <NumField label="Smoothness" value={effect.smoothness ?? 0.5} step={0.05} onChange={(v) => setExtra({ smoothness: Math.max(0, Math.min(1, v)) })} />
       </Row>
       <Row>
-        <NumField label="X" value={params.x} step={0.5} onChange={(v) => set({ x: v })} />
-        <NumField label="Y" value={params.y} step={0.5} onChange={(v) => set({ y: v })} />
+        <ShakeNum label="Horizontal" prop="x" value={params.x} step={0.5} currentFrame={currentFrame} effect={effect} onKf={keyframeParam} onChange={(v) => set({ x: v })} />
+        <ShakeNum label="Vertical" prop="y" value={params.y} step={0.5} currentFrame={currentFrame} effect={effect} onKf={keyframeParam} onChange={(v) => set({ y: v })} />
       </Row>
       <Row>
-        <NumField label="Rotation" value={params.rotation} step={0.001} onChange={(v) => set({ rotation: v })} />
-        <NumField label="Scale" value={params.scale} step={0.01} onChange={(v) => set({ scale: v })} />
+        <ShakeNum label="Rotation" prop="rotation" value={params.rotation} step={0.001} currentFrame={currentFrame} effect={effect} onKf={keyframeParam} onChange={(v) => set({ rotation: v })} />
+        <ShakeNum label="Scale" prop="scale" value={params.scale} step={0.01} currentFrame={currentFrame} effect={effect} onKf={keyframeParam} onChange={(v) => set({ scale: v })} />
       </Row>
       <Row>
-        <NumField label="Decay" value={params.decay} step={0.1} onChange={(v) => set({ decay: Math.max(0, v) })} />
+        <ShakeNum label="Decay" prop="decay" value={params.decay} step={0.1} currentFrame={currentFrame} effect={effect} onKf={keyframeParam} onChange={(v) => set({ decay: Math.max(0, v) })} />
+        <NumField label="Duration" value={effect.duration ?? 0} step={0.1} onChange={(v) => setExtra({ duration: Math.max(0, v) })} />
+      </Row>
+      <Row>
+        <NumField label="Delay" value={effect.delay ?? 0} step={0.1} onChange={(v) => setExtra({ delay: Math.max(0, v) })} />
         <NumField label="Seed" value={params.seed} onChange={(v) => set({ seed: Math.max(0, Math.round(v)) })} />
       </Row>
+      <div className="grid grid-cols-2 gap-1">
+        <ToggleButton active={!!effect.loop} onClick={() => setExtra({ loop: !effect.loop })}>Loop</ToggleButton>
+        <ToggleButton active={!!effect.reverse} onClick={() => setExtra({ reverse: !effect.reverse })}>Reverse</ToggleButton>
+      </div>
+      <Row>
+        <SelectField label="Noise" value={effect.noiseType ?? "smooth"} options={["smooth", "perlin", "simplex", "jitter", "glitch"]} onChange={(v) => setExtra({ noiseType: v as ShakeEffect["noiseType"] })} />
+        <SelectField label="Blend" value={effect.blendMode ?? "add"} options={["add", "replace", "multiply"]} onChange={(v) => setExtra({ blendMode: v as ShakeEffect["blendMode"] })} />
+      </Row>
+      <SelectField label="Space" value={effect.space ?? "layer"} options={["layer", "camera"]} onChange={(v) => setExtra({ space: v as ShakeEffect["space"] })} />
       <label className="block">
         <div className="text-[10px] text-muted-foreground mb-1">Easing</div>
         <select
@@ -500,6 +609,78 @@ function ShakeControls({ effect, onChange }: { effect: ShakeEffect; onChange: (p
         </button>
       )}
     </div>
+  );
+}
+
+function ShakePresetButton({ active, name, description, onPreview, onRestore, onCommit }: {
+  active: boolean;
+  name: string;
+  description?: string;
+  onPreview: () => void;
+  onRestore: () => void;
+  onCommit: () => void;
+}) {
+  return (
+    <button
+      onMouseEnter={onPreview}
+      onMouseLeave={onRestore}
+      onClick={onCommit}
+      className={cn(
+        "relative rounded-md border px-2 py-1.5 text-left transition",
+        active
+          ? "border-primary bg-primary/20 text-foreground shadow-[0_0_12px_-6px_var(--primary-glow)]"
+          : "border-border bg-surface-2 text-muted-foreground hover:border-primary/40 hover:text-foreground",
+      )}
+      title={description}
+    >
+      {active && <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-primary" />}
+      <div className="flex items-center gap-1">
+        <span className="truncate text-[11px] font-medium">{name}</span>
+        {active && (
+          <span className="ml-auto rounded-sm bg-primary px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-primary-foreground">
+            On
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function ShakeNum({ label, prop, value, step = 1, currentFrame, effect, onKf, onChange }: {
+  label: string;
+  prop: ShakeAnimatableProp;
+  value: number;
+  step?: number;
+  currentFrame: number;
+  effect: ShakeEffect;
+  onKf: (prop: ShakeAnimatableProp, value: number) => void;
+  onChange: (value: number) => void;
+}) {
+  const hasKeyframe = !!effect.keyframes?.[prop]?.some((kf) => kf.frame === currentFrame);
+  return (
+    <NumField
+      label={label}
+      value={value}
+      step={step}
+      kf={hasKeyframe}
+      onKf={() => onKf(prop, value)}
+      onChange={onChange}
+    />
+  );
+}
+
+function SelectField({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <label className="block">
+      <div className="text-[10px] text-muted-foreground mb-1">{label}</div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-8 rounded-md border border-border bg-surface-2 px-2 text-xs outline-none focus:border-primary/60"
+      >
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </label>
   );
 }
 

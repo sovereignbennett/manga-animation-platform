@@ -4,6 +4,7 @@
  */
 import type { EasingName } from "@/utils/easing";
 import type { ShakeParams, ShakeProfile } from "@/services/shakes";
+import type { EasingKind, Keyframe } from "@/types/animation";
 
 export type EffectKind =
   | "glow"
@@ -52,7 +53,40 @@ export interface ShakeEffect {
   decay?: number;
   seed?: number;
   easing?: EasingName;
+  velocity?: number;
+  duration?: number;
+  delay?: number;
+  loop?: boolean;
+  reverse?: boolean;
+  noiseType?: "smooth" | "perlin" | "simplex" | "jitter" | "glitch";
+  smoothness?: number;
+  blendMode?: "add" | "replace" | "multiply";
+  space?: "layer" | "camera";
+  keyframes?: Partial<Record<ShakeAnimatableProp, Keyframe[]>>;
 }
+
+export type ShakeAnimatableProp =
+  | "intensity"
+  | "speed"
+  | "velocity"
+  | "frequency"
+  | "x"
+  | "y"
+  | "rotation"
+  | "scale"
+  | "decay";
+
+export const SHAKE_ANIMATABLE_PROPS: ShakeAnimatableProp[] = [
+  "intensity",
+  "speed",
+  "velocity",
+  "frequency",
+  "x",
+  "y",
+  "rotation",
+  "scale",
+  "decay",
+];
 
 export interface ImpactEffect {
   kind: "impact";
@@ -92,6 +126,15 @@ export const EFFECT_DEFAULTS: Record<EffectKind, LayerEffect> = {
     decay: 0,
     seed: 1337,
     easing: "easeOutCubic",
+    velocity: 1,
+    duration: 0,
+    delay: 0,
+    loop: false,
+    reverse: false,
+    noiseType: "smooth",
+    smoothness: 0.5,
+    blendMode: "add",
+    space: "layer",
   },
   impact:     { kind: "impact", enabled: true, frame: 0, duration: 8, scale: 0.25, flash: 0.4 },
 };
@@ -111,6 +154,24 @@ export function normalizeShakeParams(effect: ShakeEffect): ShakeParams {
     seed: effect.seed ?? 1337,
     easing: effect.easing ?? "easeOutCubic",
   };
+}
+
+export function upsertEffectKeyframe(
+  list: Keyframe[] | undefined,
+  frame: number,
+  value: number,
+  easing: EasingKind = "easeInOutQuad",
+): Keyframe[] {
+  const next = [...(list ?? [])].filter((kf) => kf.frame !== frame);
+  next.push({ frame, value, easing });
+  return next.sort((a, b) => a.frame - b.frame);
+}
+
+export function removeEffectKeyframe(
+  list: Keyframe[] | undefined,
+  frame: number,
+): Keyframe[] {
+  return (list ?? []).filter((kf) => kf.frame !== frame);
 }
 
 export const EFFECT_LABELS: Record<EffectKind, string> = {

@@ -21,6 +21,9 @@ import { registerFrameRenderer } from "@/services/export/exportBridge";
 import { useCanvasTools } from "@/hooks/useCanvasTools";
 import { ShakeEngine } from "@/services/shakes";
 import { normalizeShakeParams } from "@/types/effects";
+import type { ShakeEffect, ShakeAnimatableProp } from "@/types/effects";
+import { ease } from "@/services/animation/easing";
+import type { Keyframe } from "@/types/animation";
 
 interface SpriteEntry {
   sprite: Sprite;
@@ -40,6 +43,46 @@ async function loadImageTexture(src: string): Promise<Texture> {
     image.onerror = () => reject(new Error("image load failed"));
   });
   return Texture.from(image);
+}
+
+function sampleEffectTrack(list: Keyframe[] | undefined, frame: number, fallback: number) {
+  const track = [...(list ?? [])].sort((a, b) => a.frame - b.frame);
+  if (track.length === 0) return fallback;
+  if (frame <= track[0].frame) return track[0].value;
+  for (let i = 0; i < track.length - 1; i += 1) {
+    const a = track[i];
+    const b = track[i + 1];
+    if (frame >= a.frame && frame <= b.frame) {
+      if (a.easing === "hold") return a.value;
+      const span = Math.max(1, b.frame - a.frame);
+      const t = ease(a.easing, (frame - a.frame) / span);
+      return a.value + (b.value - a.value) * t;
+    }
+  }
+  return track[track.length - 1].value;
+}
+
+function sampleShakeEffect(effect: ShakeEffect, frame: number): ShakeEffect {
+  if (!effect.keyframes) return effect;
+  const next: ShakeEffect = { ...effect };
+  const keys: ShakeAnimatableProp[] = [
+    "intensity",
+    "speed",
+    "velocity",
+    "frequency",
+    "x",
+    "y",
+    "rotation",
+    "scale",
+    "decay",
+  ];
+  for (const key of keys) {
+    const track = effect.keyframes[key];
+    if (track && track.length > 0) {
+      next[key] = sampleEffectTrack(track, frame, (effect[key] as number | undefined) ?? 0);
+    }
+  }
+  return next;
 }
 
 /**
@@ -310,8 +353,19 @@ export function CanvasStage() {
           break;
         }
         case "shake": {
+          const sampledEffect = sampleShakeEffect(eff, currentFrame);
           const t = Math.max(0, (currentFrame - getLayerStartFrame(layer)) / fps);
-          const sample = ShakeEngine.sample(normalizeShakeParams(eff), t);
+          const duration = sampledEffect.duration ?? 0;
+          const delay = sampledEffect.delay ?? 0;
+          let localT = Math.max(0, t - delay);
+          if (duration > 0) {
+            if (sampledEffect.loop) localT %= duration;
+            else localT = Math.min(duration, localT);
+          }
+          if (sampledEffect.reverse && duration > 0) localT = Math.max(0, duration - localT);
+          const params = normalizeShakeParams(sampledEffect);
+          const velocity = sampledEffect.velocity ?? 1;
+          const sample = ShakeEngine.sample({ ...params, intensity: params.intensity * velocity }, localT);
           shakeDx += sample.x;
           shakeDy += sample.y;
           shakeRot += (sample.rotation * 180) / Math.PI;

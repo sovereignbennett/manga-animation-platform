@@ -134,6 +134,8 @@ interface EditorState {
 
   // timeline
   playing: boolean;
+  loopPlayback: boolean;
+  previewPlaybackRate: number;
   currentFrame: number;
   totalFrames: number;
   fps: number;
@@ -214,6 +216,8 @@ interface EditorState {
 
   play: () => void;
   pause: () => void;
+  toggleLoopPlayback: () => void;
+  setPreviewPlaybackRate: (rate: number) => void;
   setFrame: (f: number) => void;
   setTimelineZoom: (z: number) => void;
   toggleRecord: () => void;
@@ -291,6 +295,8 @@ export const useEditor = create<EditorState>()(
     pan: { x: 0, y: 0 },
 
     playing: false,
+    loopPlayback: false,
+    previewPlaybackRate: 1,
     currentFrame: 0,
     totalFrames: 240,
     fps: 30,
@@ -838,6 +844,9 @@ export const useEditor = create<EditorState>()(
 
     play: () => set({ playing: true }),
     pause: () => set({ playing: false }),
+    toggleLoopPlayback: () => set((s) => ({ loopPlayback: !s.loopPlayback })),
+    setPreviewPlaybackRate: (rate) =>
+      set({ previewPlaybackRate: Math.max(0.25, Math.min(4, rate)) }),
     setFrame: (f) =>
       set((s) => ({ currentFrame: Math.max(0, Math.min(s.totalFrames, f)) })),
     setTimelineZoom: (z) =>
