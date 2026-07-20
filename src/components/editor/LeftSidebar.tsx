@@ -17,6 +17,7 @@ import { BUILTIN_BRUSH_PRESETS } from "@/services/brush";
 import { BUILTIN_SHAKES } from "@/services/shakes";
 import { BUILTIN_TRANSITIONS, TransitionEngine } from "@/services/transitions";
 import { DEFAULT_TEXT_PROPS, renderText, type TextProps } from "@/services/text/renderText";
+import type { LayerEffect } from "@/types/effects";
 
 const NAV: { id: SidebarPanel; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "projects", label: "Projects", icon: FolderKanban },
@@ -203,9 +204,8 @@ function TextPanel() {
 function ShakesPanel() {
   const selectedId = useEditor((s) => s.selectedIds[0]);
   const layer = useEditor((s) => s.project.layers.find((l) => l.id === selectedId));
-  const addEffect = useEditor((s) => s.addEffect);
-  const updateEffect = useEditor((s) => s.updateEffect);
-  const removeEffect = useEditor((s) => s.removeEffect);
+  const updateLayer = useEditor((s) => s.updateLayer);
+  const pushHistory = useEditor((s) => s.pushHistory);
   const setSelectedEffect = useEditor((s) => s.setSelectedEffect);
 
   const shakeIndex = layer?.effects?.findIndex((effect) => effect.kind === "shake") ?? -1;
@@ -213,21 +213,18 @@ function ShakesPanel() {
 
   const applyShake = (preset: (typeof BUILTIN_SHAKES)[number]) => {
     if (!layer || layer.kind !== "image") return;
+    const nonShakeEffects = (layer.effects ?? []).filter((effect) => effect.kind !== "shake");
 
     if (activeShake?.kind === "shake" && activeShake.presetId === preset.id && shakeIndex >= 0) {
-      removeEffect(layer.id, shakeIndex);
+      pushHistory();
+      updateLayer(layer.id, { effects: nonShakeEffects });
       setSelectedEffect(null);
       return;
     }
 
-    let index = shakeIndex;
-    if (index < 0) {
-      addEffect(layer.id, "shake");
-      const nextLayer = useEditor.getState().project.layers.find((l) => l.id === layer.id);
-      index = (nextLayer?.effects?.length ?? 1) - 1;
-    }
-
-    updateEffect(layer.id, index, {
+    const shakeEffect: LayerEffect = {
+      kind: "shake",
+      enabled: true,
       presetId: preset.id,
       profile: preset.params.profile,
       intensity: preset.params.intensity,
@@ -243,8 +240,10 @@ function ShakesPanel() {
       decay: preset.params.decay,
       seed: preset.params.seed,
       easing: preset.params.easing,
-    });
-    setSelectedEffect({ layerId: layer.id, index });
+    };
+    pushHistory();
+    updateLayer(layer.id, { effects: [...nonShakeEffects, shakeEffect] });
+    setSelectedEffect({ layerId: layer.id, index: nonShakeEffects.length });
   };
 
   return (
