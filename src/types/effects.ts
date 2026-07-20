@@ -2,6 +2,8 @@
  * Per-layer effects. Applied at render time on top of the sampled pose.
  * Effects are non-destructive and stored on the layer.
  */
+import type { EasingName } from "@/utils/easing";
+import type { ShakeParams, ShakeProfile } from "@/services/shakes";
 
 export type EffectKind =
   | "glow"
@@ -38,6 +40,18 @@ export interface ShakeEffect {
   amplitude: number;  // px
   frequency: number;  // hz
   rotational: number; // deg (max)
+  profile?: ShakeProfile;
+  presetId?: string;
+  intensity?: number;
+  speed?: number;
+  randomness?: number;
+  x?: number;
+  y?: number;
+  rotation?: number;
+  scale?: number;
+  decay?: number;
+  seed?: number;
+  easing?: EasingName;
 }
 
 export interface ImpactEffect {
@@ -60,9 +74,44 @@ export const EFFECT_DEFAULTS: Record<EffectKind, LayerEffect> = {
   glow:       { kind: "glow", enabled: true, color: "#d44dc9", strength: 4, innerStrength: 0, quality: 0.3 },
   motionBlur: { kind: "motionBlur", enabled: true, amount: 6 },
   chromatic:  { kind: "chromatic", enabled: true, offset: 4, angle: 0 },
-  shake:      { kind: "shake", enabled: true, amplitude: 4, frequency: 20, rotational: 1 },
+  shake:      {
+    kind: "shake",
+    enabled: true,
+    amplitude: 4,
+    frequency: 20,
+    rotational: 1,
+    presetId: "handheld",
+    profile: "handheld",
+    intensity: 1,
+    speed: 1,
+    randomness: 0.5,
+    x: 4,
+    y: 4,
+    rotation: 0.017,
+    scale: 0,
+    decay: 0,
+    seed: 1337,
+    easing: "easeOutCubic",
+  },
   impact:     { kind: "impact", enabled: true, frame: 0, duration: 8, scale: 0.25, flash: 0.4 },
 };
+
+export function normalizeShakeParams(effect: ShakeEffect): ShakeParams {
+  return {
+    profile: effect.profile ?? "noise",
+    intensity: effect.intensity ?? 1,
+    speed: effect.speed ?? 1,
+    frequency: effect.frequency,
+    randomness: effect.randomness ?? 0.5,
+    rotation: effect.rotation ?? (effect.rotational * Math.PI) / 180,
+    x: effect.x ?? effect.amplitude,
+    y: effect.y ?? effect.amplitude,
+    scale: effect.scale ?? 0,
+    decay: effect.decay ?? 0,
+    seed: effect.seed ?? 1337,
+    easing: effect.easing ?? "easeOutCubic",
+  };
+}
 
 export const EFFECT_LABELS: Record<EffectKind, string> = {
   glow: "Glow",

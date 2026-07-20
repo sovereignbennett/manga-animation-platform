@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
   Application,
-  Assets,
   Container,
   Sprite,
   Graphics,
@@ -10,9 +9,18 @@ import {
 } from "pixi.js";
 import { GlowFilter, RGBSplitFilter } from "pixi-filters";
 import { BlurFilter, ColorMatrixFilter } from "pixi.js";
-import { useEditor, sampleLayer, type Layer } from "@/store/editorStore";
+import {
+  getLayerFadeOpacity,
+  getLayerStartFrame,
+  isLayerActiveAtFrame,
+  sampleLayer,
+  useEditor,
+  type Layer,
+} from "@/store/editorStore";
 import { registerFrameRenderer } from "@/services/export/exportBridge";
 import { useCanvasTools } from "@/hooks/useCanvasTools";
+import { ShakeEngine } from "@/services/shakes";
+import { normalizeShakeParams } from "@/types/effects";
 
 interface SpriteEntry {
   sprite: Sprite;
@@ -22,6 +30,16 @@ interface SpriteEntry {
   blur?: BlurFilter;
   chromatic?: RGBSplitFilter;
   flash?: ColorMatrixFilter;
+}
+
+async function loadImageTexture(src: string): Promise<Texture> {
+  const image = new Image();
+  image.src = src;
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error("image load failed"));
+  });
+  return Texture.from(image);
 }
 
 /**
@@ -187,11 +205,11 @@ export function CanvasStage() {
       rawLayer.mediaType !== "video"
     ) {
       try {
-        const tex = await Assets.load(rawLayer.src);
+        const tex = await loadImageTexture(rawLayer.src);
         existing.sprite.texture = tex;
         existing.src = rawLayer.src;
-      } catch {
-        /* ignore */
+      } catch (error) {
+        console.warn("MotionCut could not update image texture", error);
       }
     }
     if (existing) return existing;
@@ -217,14 +235,15 @@ export function CanvasStage() {
           const sp = new Sprite(tex);
           entry = { sprite: sp, src: rawLayer.src!, video };
         } else {
-          const tex = await Assets.load(rawLayer.src!);
+          const tex = await loadImageTexture(rawLayer.src!);
           const sp = new Sprite(tex);
           entry = { sprite: sp, src: rawLayer.src! };
         }
         spritesRef.current.set(rawLayer.id, entry);
         contentRef.current?.addChild(entry.sprite);
         return entry;
-      } catch {
+      } catch (error) {
+        console.warn("MotionCut could not create layer sprite", error);
         return null;
       } finally {
         pendingRef.current.delete(rawLayer.id);
@@ -239,6 +258,7 @@ export function CanvasStage() {
     entry: SpriteEntry,
     layer: Layer,
     currentFrame: number,
+    fps: number,
   ) => {
     const filters: (
       | BlurFilter
@@ -290,11 +310,12 @@ export function CanvasStage() {
           break;
         }
         case "shake": {
-          const t = currentFrame / 30;
-          const seed = layer.id.charCodeAt(0) || 1;
-          shakeDx += Math.sin(t * eff.frequency + seed) * eff.amplitude;
-          shakeDy += Math.cos(t * eff.frequency * 1.3 + seed) * eff.amplitude;
-          shakeRot += Math.sin(t * eff.frequency * 0.7 + seed) * eff.rotational;
+          const t = Math.max(0, (currentFrame - getLayerStartFrame(layer)) / fps);
+          const sample = ShakeEngine.sample(normalizeShakeParams(eff), t);
+          shakeDx += sample.x;
+          shakeDy += sample.y;
+          shakeRot += (sample.rotation * 180) / Math.PI;
+          impactScale += sample.scale;
           break;
         }
         case "impact": {
@@ -324,7 +345,8 @@ export function CanvasStage() {
     const world = worldRef.current;
     const content = contentRef.current;
     if (!world || !content) return;
-    const { project, zoom, pan, currentFrame, fps } = useEditor.getState();
+    const { project, zoom, pan, currentFrame, fps, totalFrames } =
+      useEditor.getState();
 
     world.scale.set(zoom);
     const app = appRef.current!;
@@ -358,11 +380,19 @@ export function CanvasStage() {
       if (!entry) continue;
       content.setChildIndex(entry.sprite, content.children.length - 1);
 
+      const activeNow = isLayerActiveAtFrame(rawLayer, currentFrame, totalFrames);
+      if (!activeNow || !rawLayer.visible) {
+        entry.sprite.visible = false;
+        continue;
+      }
+
       // Sync video time to timeline playhead
       if (entry.video && rawLayer.videoDurationSec) {
+        const startFrame = getLayerStartFrame(rawLayer);
+        const playbackRate = Math.max(0.1, Math.min(8, rawLayer.playbackRate ?? 1));
         const t = Math.min(
           rawLayer.videoDurationSec - 0.01,
-          Math.max(0, currentFrame / fps),
+          Math.max(0, ((currentFrame - startFrame) / fps) * playbackRate),
         );
         if (Math.abs(entry.video.currentTime - t) > 0.05) {
           try {
@@ -373,7 +403,7 @@ export function CanvasStage() {
         }
       }
 
-      const fx = applyEffects(entry, rawLayer, currentFrame);
+      const fx = applyEffects(entry, rawLayer, currentFrame, fps);
 
       const sp = entry.sprite;
       sp.anchor.set(layer.anchorX, layer.anchorY);
@@ -383,8 +413,8 @@ export function CanvasStage() {
         layer.scaleX * fx.impactScale,
         layer.scaleY * fx.impactScale,
       );
-      sp.alpha = layer.opacity;
-      sp.visible = layer.visible;
+      sp.alpha = layer.opacity * getLayerFadeOpacity(rawLayer, currentFrame, totalFrames);
+      sp.visible = true;
     }
   };
 
@@ -396,7 +426,7 @@ export function CanvasStage() {
     const app = appRef.current;
     const content = contentRef.current;
     if (!app || !content) throw new Error("not ready");
-    const { project, fps } = useEditor.getState();
+    const { project, fps, totalFrames } = useEditor.getState();
     const outW = opts?.width ?? project.canvasWidth;
     const outH = opts?.height ?? project.canvasHeight;
 
@@ -413,10 +443,17 @@ export function CanvasStage() {
       const layer = sampleLayer(rawLayer, frame);
       const entry = await ensureSpriteForLayer(rawLayer);
       if (!entry) continue;
+      const activeNow = isLayerActiveAtFrame(rawLayer, frame, totalFrames);
+      if (!activeNow || !rawLayer.visible) {
+        entry.sprite.visible = false;
+        continue;
+      }
       if (entry.video && rawLayer.videoDurationSec) {
+        const startFrame = getLayerStartFrame(rawLayer);
+        const playbackRate = Math.max(0.1, Math.min(8, rawLayer.playbackRate ?? 1));
         const t = Math.min(
           rawLayer.videoDurationSec - 0.01,
-          Math.max(0, frame / fps),
+          Math.max(0, ((frame - startFrame) / fps) * playbackRate),
         );
         try {
           entry.video.currentTime = t;
@@ -432,7 +469,7 @@ export function CanvasStage() {
           /* ignore */
         }
       }
-      const fx = applyEffects(entry, rawLayer, frame);
+      const fx = applyEffects(entry, rawLayer, frame, fps);
       const sp = entry.sprite;
       sp.anchor.set(layer.anchorX, layer.anchorY);
       sp.position.set(
@@ -444,8 +481,8 @@ export function CanvasStage() {
         layer.scaleX * fx.impactScale,
         layer.scaleY * fx.impactScale,
       );
-      sp.alpha = layer.opacity;
-      sp.visible = layer.visible;
+      sp.alpha = layer.opacity * getLayerFadeOpacity(rawLayer, frame, totalFrames);
+      sp.visible = true;
     }
 
     const frameRect = new Rectangle(0, 0, outW, outH);

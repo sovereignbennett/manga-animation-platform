@@ -3,9 +3,18 @@ import { Plus, Trash2, Zap, Wind, Waves, Radio, Flame, Eye, EyeOff } from "lucid
 import { useEditor } from "@/store/editorStore";
 import type { EffectKind, LayerEffect } from "@/types/effects";
 import { EFFECT_LABELS } from "@/types/effects";
+import { cn } from "@/lib/utils";
 
 const EFFECT_ICONS: Record<EffectKind, React.ComponentType<{ className?: string }>> = {
   glow: Zap, motionBlur: Wind, chromatic: Radio, shake: Waves, impact: Flame,
+};
+
+const EFFECT_HINTS: Record<EffectKind, string> = {
+  glow: "Adds an outer/inner light around the layer.",
+  motionBlur: "Softens fast movement and transition streaks.",
+  chromatic: "Splits RGB channels for glitch and impact looks.",
+  shake: "Applies camera-style movement to this layer only.",
+  impact: "Pops scale and flash at a chosen frame.",
 };
 
 export function EffectsPanel() {
@@ -14,6 +23,8 @@ export function EffectsPanel() {
   const addEffect = useEditor((s) => s.addEffect);
   const removeEffect = useEditor((s) => s.removeEffect);
   const updateEffect = useEditor((s) => s.updateEffect);
+  const selectedEffect = useEditor((s) => s.selectedEffect);
+  const setSelectedEffect = useEditor((s) => s.setSelectedEffect);
 
   if (!layer || layer.kind !== "image") {
     return (
@@ -27,6 +38,12 @@ export function EffectsPanel() {
 
   return (
     <div className="space-y-3">
+      <div className="rounded-lg border border-border bg-surface-2/40 p-2.5">
+        <div className="text-xs font-medium">Effects apply to {layer.name}</div>
+        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+          Add an effect below, then click its card to focus full controls in the Inspector.
+        </p>
+      </div>
       <div>
         <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground mb-1.5">Add effect</div>
         <div className="grid grid-cols-5 gap-1">
@@ -36,10 +53,14 @@ export function EffectsPanel() {
               <button
                 key={k}
                 onClick={() => addEffect(layer.id, k)}
-                title={EFFECT_LABELS[k]}
-                className="h-10 rounded-md border border-border bg-surface-2/50 flex items-center justify-center hover:border-primary/40 hover:text-primary transition"
+                title={`${EFFECT_LABELS[k]} - ${EFFECT_HINTS[k]}`}
+                className="group relative h-10 rounded-md border border-border bg-surface-2/50 flex items-center justify-center hover:border-primary/40 hover:text-primary transition"
               >
                 <Icon className="w-4 h-4" />
+                <span className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden w-48 rounded-md border border-border bg-popover px-2 py-1.5 text-left shadow-panel group-hover:block">
+                  <span className="block text-[11px] font-medium text-popover-foreground">{EFFECT_LABELS[k]}</span>
+                  <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">{EFFECT_HINTS[k]}</span>
+                </span>
               </button>
             );
           })}
@@ -54,10 +75,19 @@ export function EffectsPanel() {
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
-              className="rounded-lg border border-border bg-surface-2/40 p-2.5"
+              onClick={() => setSelectedEffect({ layerId: layer.id, index: i })}
+              className={cn(
+                "rounded-lg border bg-surface-2/40 p-2.5 cursor-pointer",
+                selectedEffect?.layerId === layer.id && selectedEffect.index === i
+                  ? "border-primary/60"
+                  : "border-border",
+              )}
             >
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-medium flex-1">{EFFECT_LABELS[eff.kind]}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium">{EFFECT_LABELS[eff.kind]}</div>
+                  <div className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{EFFECT_HINTS[eff.kind]}</div>
+                </div>
                 <button
                   className="tool-btn !w-6 !h-6"
                   onClick={() => updateEffect(layer.id, i, { enabled: !eff.enabled } as Partial<LayerEffect>)}

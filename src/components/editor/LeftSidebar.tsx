@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   FolderKanban, Image as ImageIcon, Layers, FolderTree, Film,
   Sparkles, Download, Settings, Eye, EyeOff, Lock, Unlock, Trash2, Copy,
-  ChevronUp, ChevronDown, Plus, Upload, Wand2, Video,
+  ChevronUp, ChevronDown, Plus, Upload, Wand2, Video, Brush, Type,
+  Waves, Shuffle, Music2,
 } from "lucide-react";
 import { useEditor, type SidebarPanel } from "@/store/editorStore";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,10 @@ import { MagicCutPanel } from "./MagicCutPanel";
 import { AnimationPanel } from "./AnimationPanel";
 import { EffectsPanel } from "./EffectsPanel";
 import { ExportPanel } from "./ExportPanel";
+import { BUILTIN_BRUSH_PRESETS } from "@/services/brush";
+import { BUILTIN_SHAKES } from "@/services/shakes";
+import { BUILTIN_TRANSITIONS, TransitionEngine } from "@/services/transitions";
+import { DEFAULT_TEXT_PROPS, renderText, type TextProps } from "@/services/text/renderText";
 
 const NAV: { id: SidebarPanel; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "projects", label: "Projects", icon: FolderKanban },
@@ -20,10 +25,32 @@ const NAV: { id: SidebarPanel; label: string; icon: React.ComponentType<{ classN
   { id: "groups", label: "Groups", icon: FolderTree },
   { id: "magic", label: "Magic Cut", icon: Wand2 },
   { id: "animation", label: "Animation", icon: Film },
+  { id: "brush", label: "Brush", icon: Brush },
+  { id: "text", label: "Text", icon: Type },
   { id: "effects", label: "Effects", icon: Sparkles },
+  { id: "shakes", label: "Shakes", icon: Waves },
+  { id: "transitions", label: "Transitions", icon: Shuffle },
+  { id: "audio", label: "Audio", icon: Music2 },
   { id: "export", label: "Export", icon: Download },
   { id: "settings", label: "Settings", icon: Settings },
 ];
+
+const PANEL_HINTS: Record<SidebarPanel, string> = {
+  projects: "Start, rename, and inspect the current project.",
+  assets: "Import images or video into the canvas.",
+  layers: "Select, reorder, duplicate, hide, or lock layers.",
+  groups: "Group selected layers for organized rigs.",
+  magic: "Cut characters into editable animated parts.",
+  animation: "Apply presets and tune keyframes.",
+  brush: "Pick brush, eraser, pen, or lasso presets.",
+  text: "Create raster text layers that export like artwork.",
+  effects: "Add non-destructive effects to the selected layer.",
+  shakes: "Apply camera and impact shake presets.",
+  transitions: "Add transition keyframes at the playhead.",
+  audio: "Prepare audio analysis and beat tools.",
+  export: "Render the project to shareable formats.",
+  settings: "Adjust canvas size, FPS, and duration.",
+};
 
 export function LeftSidebar() {
   const panel = useEditor((s) => s.sidebarPanel);
@@ -40,7 +67,7 @@ export function LeftSidebar() {
               key={n.id}
               onClick={() => setPanel(n.id)}
               className={cn(
-                "relative w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground transition",
+                "group relative w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground transition",
                 "hover:bg-surface-2 hover:text-foreground",
                 active && "text-primary bg-primary/10",
               )}
@@ -53,16 +80,23 @@ export function LeftSidebar() {
                 />
               )}
               <Icon className="w-[18px] h-[18px]" />
+              <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 hidden min-w-52 rounded-md border border-border bg-popover px-2 py-1.5 text-left shadow-panel group-hover:block z-[100]">
+                <span className="block text-[11px] font-medium text-popover-foreground">{n.label}</span>
+                <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">{PANEL_HINTS[n.id]}</span>
+              </span>
             </button>
           );
         })}
       </nav>
 
       <div className="w-72 lg:w-80 shrink-0 border-r border-border bg-panel/60 backdrop-blur flex flex-col">
-        <div className="h-11 shrink-0 flex items-center justify-between px-3 border-b border-border">
+        <div className="min-h-14 shrink-0 flex flex-col justify-center gap-0.5 px-3 border-b border-border">
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {NAV.find((n) => n.id === panel)?.label}
           </h2>
+          <p className="text-[10px] leading-snug text-muted-foreground/80">
+            {PANEL_HINTS[panel]}
+          </p>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto scroll-thin">
           <AnimatePresence mode="wait">
@@ -80,7 +114,12 @@ export function LeftSidebar() {
               {panel === "groups" && <GroupsPanel />}
               {panel === "magic" && <MagicCutPanel />}
               {panel === "animation" && <AnimationPanel />}
+              {panel === "brush" && <BrushPanel />}
+              {panel === "text" && <TextPanel />}
               {panel === "effects" && <EffectsPanel />}
+              {panel === "shakes" && <ShakesPanel />}
+              {panel === "transitions" && <TransitionsPanel />}
+              {panel === "audio" && <AudioPanel />}
               {panel === "export" && <ExportPanel />}
               {panel === "settings" && <SettingsPanel />}
             </motion.div>
@@ -88,6 +127,197 @@ export function LeftSidebar() {
         </div>
       </div>
     </aside>
+  );
+}
+
+function BrushPanel() {
+  const activeTool = useEditor((s) => s.activeTool);
+  const setTool = useEditor((s) => s.setTool);
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-1.5">
+        {BUILTIN_BRUSH_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            onClick={() => setTool(preset.tool)}
+            className={cn(
+              "rounded-md border px-2 py-2 text-left transition",
+              activeTool === preset.tool
+                ? "border-primary/50 bg-primary/10 text-foreground"
+                : "border-border bg-surface-2/40 hover:border-border-strong",
+            )}
+            title={`${preset.name} · ${preset.params.size}px`}
+          >
+            <div className="text-xs font-medium">{preset.name}</div>
+            <div className="text-[10px] text-muted-foreground capitalize">{preset.tool} · {preset.params.size}px</div>
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] text-muted-foreground">Brush presets now live in the MotionCut rail. Stroke committing will be wired into selected layer masks next.</p>
+    </div>
+  );
+}
+
+function TextPanel() {
+  const addImageLayer = useEditor((s) => s.addImageLayer);
+  const setTool = useEditor((s) => s.setTool);
+
+  const addText = (props: TextProps) => {
+    const rendered = renderText(props);
+    addImageLayer("Text", rendered.src, rendered.width, rendered.height, {
+      text: props,
+      y: -120,
+    });
+    setTool("text");
+  };
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={() => addText({ ...DEFAULT_TEXT_PROPS })}
+        className="w-full inline-flex items-center justify-center gap-2 h-9 rounded-md bg-primary/15 text-primary border border-primary/30 text-xs font-medium hover:bg-primary/20"
+      >
+        <Plus className="w-4 h-4" /> Add text layer
+      </button>
+      <div className="grid grid-cols-1 gap-1.5">
+        {[
+          { content: "MOTIONCUT", fontFamily: "Impact", fontSize: 104, bold: false, color: "#ffffff" },
+          { content: "New Scene", fontFamily: "Georgia", fontSize: 88, italic: true, color: "#f6d365" },
+          { content: "SFX!", fontFamily: "Arial", fontSize: 120, bold: true, color: "#4dd4d4" },
+        ].map((patch) => (
+          <button
+            key={patch.content}
+            onClick={() => addText({ ...DEFAULT_TEXT_PROPS, ...patch })}
+            className="rounded-md border border-border bg-surface-2/40 px-2 py-2 text-left hover:border-primary/40"
+          >
+            <div className="text-xs font-medium">{patch.content}</div>
+            <div className="text-[10px] text-muted-foreground">{patch.fontFamily} · {patch.fontSize}px</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ShakesPanel() {
+  const selectedId = useEditor((s) => s.selectedIds[0]);
+  const layer = useEditor((s) => s.project.layers.find((l) => l.id === selectedId));
+  const addEffect = useEditor((s) => s.addEffect);
+  const updateEffect = useEditor((s) => s.updateEffect);
+
+  const applyShake = (preset: (typeof BUILTIN_SHAKES)[number]) => {
+    if (!layer || layer.kind !== "image") return;
+    addEffect(layer.id, "shake");
+    const nextLayer = useEditor.getState().project.layers.find((l) => l.id === layer.id);
+    const index = (nextLayer?.effects?.length ?? 1) - 1;
+    updateEffect(layer.id, index, {
+      presetId: preset.id,
+      profile: preset.params.profile,
+      intensity: preset.params.intensity,
+      speed: preset.params.speed,
+      amplitude: Math.max(preset.params.x, preset.params.y) * preset.params.intensity,
+      frequency: preset.params.frequency * preset.params.speed,
+      randomness: preset.params.randomness,
+      x: preset.params.x,
+      y: preset.params.y,
+      rotation: preset.params.rotation,
+      rotational: (preset.params.rotation * 180) / Math.PI,
+      scale: preset.params.scale,
+      decay: preset.params.decay,
+      seed: preset.params.seed,
+      easing: preset.params.easing,
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      {!layer && <p className="text-[11px] text-muted-foreground">Select a layer, then apply a shake preset.</p>}
+      <div className="grid grid-cols-2 gap-1.5">
+        {BUILTIN_SHAKES.map((preset) => (
+          <button
+            key={preset.id}
+            disabled={!layer}
+            onClick={() => applyShake(preset)}
+            className="rounded-md border border-border bg-surface-2/40 px-2 py-2 text-left text-xs hover:border-primary/40 disabled:opacity-40"
+            title={preset.tags?.join(", ")}
+          >
+            <div className="font-medium">{preset.name}</div>
+            <div className="text-[10px] text-muted-foreground">{preset.params.frequency}hz · {preset.params.x}/{preset.params.y}px</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TransitionsPanel() {
+  const selectedId = useEditor((s) => s.selectedIds[0]);
+  const layer = useEditor((s) => s.project.layers.find((l) => l.id === selectedId));
+  const currentFrame = useEditor((s) => s.currentFrame);
+  const fps = useEditor((s) => s.fps);
+  const setKeyframe = useEditor((s) => s.setKeyframe);
+  const addEffect = useEditor((s) => s.addEffect);
+  const updateEffect = useEditor((s) => s.updateEffect);
+
+  const applyTransition = (preset: (typeof BUILTIN_TRANSITIONS)[number]) => {
+    if (!layer || layer.kind !== "image") return;
+    const start = TransitionEngine.evaluate(preset.id, 0);
+    const end = TransitionEngine.evaluate(preset.id, 1);
+    const durationFrames = Math.max(1, Math.round(preset.params.duration * fps));
+    setKeyframe(layer.id, "opacity", currentFrame, layer.opacity * start.opacity);
+    setKeyframe(layer.id, "opacity", currentFrame + durationFrames, layer.opacity * end.opacity);
+    if (start.translateX || end.translateX) {
+      setKeyframe(layer.id, "x", currentFrame, layer.x + start.translateX);
+      setKeyframe(layer.id, "x", currentFrame + durationFrames, layer.x + end.translateX);
+    }
+    if (start.translateY || end.translateY) {
+      setKeyframe(layer.id, "y", currentFrame, layer.y + start.translateY);
+      setKeyframe(layer.id, "y", currentFrame + durationFrames, layer.y + end.translateY);
+    }
+    if (start.scaleX !== 1 || end.scaleX !== 1) {
+      setKeyframe(layer.id, "scaleX", currentFrame, layer.scaleX * start.scaleX);
+      setKeyframe(layer.id, "scaleX", currentFrame + durationFrames, layer.scaleX * end.scaleX);
+    }
+    if (start.scaleY !== 1 || end.scaleY !== 1) {
+      setKeyframe(layer.id, "scaleY", currentFrame, layer.scaleY * start.scaleY);
+      setKeyframe(layer.id, "scaleY", currentFrame + durationFrames, layer.scaleY * end.scaleY);
+    }
+    if (start.blur > 0) {
+      addEffect(layer.id, "motionBlur");
+      const nextLayer = useEditor.getState().project.layers.find((l) => l.id === layer.id);
+      updateEffect(layer.id, (nextLayer?.effects?.length ?? 1) - 1, { amount: start.blur });
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {!layer && <p className="text-[11px] text-muted-foreground">Select a layer, then apply a transition at the playhead.</p>}
+      <div className="grid grid-cols-2 gap-1.5">
+        {BUILTIN_TRANSITIONS.map((preset) => (
+          <button
+            key={preset.id}
+            disabled={!layer}
+            onClick={() => applyTransition(preset)}
+            className="rounded-md border border-border bg-surface-2/40 px-2 py-2 text-left text-xs hover:border-primary/40 disabled:opacity-40"
+          >
+            <div className="font-medium">{preset.name}</div>
+            <div className="text-[10px] text-muted-foreground">{preset.params.duration}s · {preset.params.direction}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AudioPanel() {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-border bg-surface-2/40 p-3">
+        <div className="text-xs font-medium">Audio engine ready</div>
+        <p className="mt-1 text-[11px] text-muted-foreground">Waveform analysis, beat detection and gain controls are imported. The next integration step is adding project-owned audio tracks to editorStore.</p>
+      </div>
+    </div>
   );
 }
 

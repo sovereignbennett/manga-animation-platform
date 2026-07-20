@@ -24,7 +24,12 @@ export type SidebarPanel =
   | "groups"
   | "magic"
   | "animation"
+  | "brush"
+  | "text"
   | "effects"
+  | "shakes"
+  | "transitions"
+  | "audio"
   | "export"
   | "settings";
 
@@ -60,6 +65,12 @@ export interface Layer {
   src?: string; // data URL for images / blob URL for video
   /** Video-specific: intrinsic duration in seconds (populated on import). */
   videoDurationSec?: number;
+  /** Timeline placement. Missing values keep old projects visible for the full edit. */
+  startFrame?: number;
+  endFrame?: number;
+  fadeInFrames?: number;
+  fadeOutFrames?: number;
+  playbackRate?: number;
   /** Optional soft mask (RGBA data URL, same size as src). Editable via brush/eraser. */
   mask?: string;
   /** Body part this layer represents (populated by Magic Cut). */
@@ -108,9 +119,15 @@ interface HistoryEntry {
   order: string[];
 }
 
+export interface SelectedEffectRef {
+  layerId: string;
+  index: number;
+}
+
 interface EditorState {
   project: Project;
   selectedIds: string[];
+  selectedEffect: SelectedEffectRef | null;
   activeTool: ToolId;
   zoom: number;
   pan: { x: number; y: number };
@@ -134,12 +151,14 @@ interface EditorState {
   setZoom: (z: number) => void;
   setPan: (p: { x: number; y: number }) => void;
   select: (ids: string[]) => void;
+  setSelectedEffect: (effect: SelectedEffectRef | null) => void;
   setSidebarPanel: (p: SidebarPanel) => void;
   addImageLayer: (
     name: string,
     src: string,
     width: number,
     height: number,
+    opts?: { x?: number; y?: number; text?: TextProps },
   ) => void;
   addVideoLayer: (
     name: string,
@@ -266,6 +285,7 @@ export const useEditor = create<EditorState>()(
   subscribeWithSelector((set, get) => ({
     project: emptyProject(),
     selectedIds: [],
+    selectedEffect: null,
     activeTool: "select",
     zoom: 1,
     pan: { x: 0, y: 0 },
@@ -284,7 +304,8 @@ export const useEditor = create<EditorState>()(
     setTool: (t) => set({ activeTool: t }),
     setZoom: (z) => set({ zoom: Math.max(0.1, Math.min(8, z)) }),
     setPan: (p) => set({ pan: p }),
-    select: (ids) => set({ selectedIds: ids }),
+    select: (ids) => set({ selectedIds: ids, selectedEffect: null }),
+    setSelectedEffect: (effect) => set({ selectedEffect: effect }),
     setSidebarPanel: (p) => set({ sidebarPanel: p }),
     setCanvasSize: (w, h) =>
       set((s) => ({
@@ -301,6 +322,7 @@ export const useEditor = create<EditorState>()(
     addVideoLayer: (name, src, width, height, durationSec) => {
       get().pushHistory();
       const id = uid();
+      const durationFrames = Math.max(1, Math.ceil(durationSec * get().fps));
       const layer: Layer = {
         id,
         name,
@@ -309,6 +331,11 @@ export const useEditor = create<EditorState>()(
         mediaType: "video",
         src,
         videoDurationSec: durationSec,
+        startFrame: 0,
+        endFrame: durationFrames,
+        fadeInFrames: 0,
+        fadeOutFrames: 0,
+        playbackRate: 1,
         width,
         height,
         x: 0,
@@ -349,6 +376,12 @@ export const useEditor = create<EditorState>()(
           ),
           updatedAt: Date.now(),
         },
+        selectedEffect: {
+          layerId,
+          index:
+            s.project.layers.find((l) => l.id === layerId)?.effects?.length ??
+            0,
+        },
       }));
     },
     updateEffect: (layerId, index, patch) => {
@@ -377,6 +410,10 @@ export const useEditor = create<EditorState>()(
           }),
           updatedAt: Date.now(),
         },
+        selectedEffect:
+          s.selectedEffect?.layerId === layerId
+            ? null
+            : s.selectedEffect,
       }));
     },
 
@@ -409,6 +446,11 @@ export const useEditor = create<EditorState>()(
         parentId: null,
         kind: "image",
         src,
+        startFrame: 0,
+        endFrame: get().totalFrames,
+        fadeInFrames: 0,
+        fadeOutFrames: 0,
+        playbackRate: 1,
         width,
         height,
         x: opts?.x ?? 0,
@@ -594,6 +636,7 @@ export const useEditor = create<EditorState>()(
           updatedAt: Date.now(),
         },
         selectedIds: [],
+        selectedEffect: null,
       }));
     },
 
@@ -787,6 +830,7 @@ export const useEditor = create<EditorState>()(
       set({
         project: emptyProject(name),
         selectedIds: [],
+        selectedEffect: null,
         history: { past: [], future: [] },
         currentFrame: 0,
       });
@@ -887,4 +931,38 @@ export function sampleLayer(layer: Layer, frame: number): Layer {
     }
   }
   return out;
+}
+
+export function getLayerStartFrame(layer: Layer): number {
+  return Math.max(0, Math.round(layer.startFrame ?? 0));
+}
+
+export function getLayerEndFrame(layer: Layer, totalFrames: number): number {
+  const start = getLayerStartFrame(layer);
+  const fallback = Math.max(1, Math.round(totalFrames));
+  return Math.max(start + 1, Math.round(layer.endFrame ?? fallback));
+}
+
+export function isLayerActiveAtFrame(
+  layer: Layer,
+  frame: number,
+  totalFrames: number,
+): boolean {
+  const start = getLayerStartFrame(layer);
+  const end = getLayerEndFrame(layer, totalFrames);
+  return frame >= start && frame < end;
+}
+
+export function getLayerFadeOpacity(
+  layer: Layer,
+  frame: number,
+  totalFrames: number,
+): number {
+  const start = getLayerStartFrame(layer);
+  const end = getLayerEndFrame(layer, totalFrames);
+  const fadeIn = Math.max(0, Math.round(layer.fadeInFrames ?? 0));
+  const fadeOut = Math.max(0, Math.round(layer.fadeOutFrames ?? 0));
+  const inOpacity = fadeIn > 0 ? Math.min(1, Math.max(0, (frame - start) / fadeIn)) : 1;
+  const outOpacity = fadeOut > 0 ? Math.min(1, Math.max(0, (end - frame) / fadeOut)) : 1;
+  return Math.min(inOpacity, outOpacity);
 }
