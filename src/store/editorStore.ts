@@ -65,6 +65,8 @@ export interface Layer {
   src?: string; // data URL for images / blob URL for video
   /** Video-specific: intrinsic duration in seconds (populated on import). */
   videoDurationSec?: number;
+  /** First source-video frame used by this clip after trimming or splitting. */
+  mediaOffsetFrames?: number;
   /** Timeline placement. Missing values keep old projects visible for the full edit. */
   startFrame?: number;
   endFrame?: number;
@@ -171,6 +173,7 @@ interface EditorState {
   ) => void;
   updateLayer: (id: string, patch: Partial<Layer>) => void;
   removeLayers: (ids: string[]) => void;
+  splitLayer: (id: string, frame: number) => boolean;
   duplicateLayers: (ids: string[]) => void;
   toggleVisible: (id: string) => void;
   toggleLocked: (id: string) => void;
@@ -644,6 +647,52 @@ export const useEditor = create<EditorState>()(
         selectedIds: [],
         selectedEffect: null,
       }));
+    },
+
+    splitLayer: (id, frame) => {
+      const { project, totalFrames } = get();
+      const layer = project.layers.find((item) => item.id === id);
+      if (!layer || layer.kind !== "image" || layer.locked) return false;
+
+      const startFrame = getLayerStartFrame(layer);
+      const endFrame = getLayerEndFrame(layer, totalFrames);
+      const splitFrame = Math.round(frame);
+      if (splitFrame <= startFrame || splitFrame >= endFrame) return false;
+
+      get().pushHistory();
+      const rightId = uid();
+      const rightLayer: Layer = {
+        ...layer,
+        id: rightId,
+        name: `${layer.name} 2`,
+        startFrame: splitFrame,
+        endFrame,
+        fadeInFrames: 0,
+        mediaOffsetFrames:
+          (layer.mediaOffsetFrames ?? 0) +
+          (splitFrame - startFrame) * Math.max(0.1, Math.min(8, layer.playbackRate ?? 1)),
+      };
+      const sourceIndex = project.order.indexOf(id);
+      const order = [...project.order];
+      order.splice(sourceIndex + 1, 0, rightId);
+
+      set((s) => ({
+        project: {
+          ...s.project,
+          layers: s.project.layers
+            .map((item) =>
+              item.id === id
+                ? { ...item, endFrame: splitFrame, fadeOutFrames: 0 }
+                : item,
+            )
+            .concat(rightLayer),
+          order,
+          updatedAt: Date.now(),
+        },
+        selectedIds: [rightId],
+        selectedEffect: null,
+      }));
+      return true;
     },
 
     duplicateLayers: (ids) => {

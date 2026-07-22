@@ -9,6 +9,7 @@ import {
   Pause,
   Play,
   Repeat2,
+  Scissors,
   SkipBack,
   SkipForward,
   Trash2,
@@ -86,6 +87,16 @@ export function BottomTimeline() {
   const pushHistory = useEditor((s) => s.pushHistory);
   const removeKeyframe = useEditor((s) => s.removeKeyframe);
   const setKeyframeEasing = useEditor((s) => s.setKeyframeEasing);
+  const splitLayer = useEditor((s) => s.splitLayer);
+  const removeLayers = useEditor((s) => s.removeLayers);
+  const selectedLayer =
+    selectedIds.length === 1 ? layers.find((layer) => layer.id === selectedIds[0]) : undefined;
+  const canSplit = Boolean(
+    selectedLayer &&
+      !selectedLayer.locked &&
+      currentFrame > getLayerStartFrame(selectedLayer) &&
+      currentFrame < getLayerEndFrame(selectedLayer, totalFrames),
+  );
 
   const [menu, setMenu] = useState<{
     layerId: string;
@@ -303,6 +314,27 @@ export function BottomTimeline() {
           <Circle className={cn("w-2.5 h-2.5", recording ? "fill-red-500 text-red-500 animate-pulse" : "fill-current")} />
           Rec
         </button>
+
+        {selectedLayer && (
+          <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
+            <button
+              onClick={() => splitLayer(selectedLayer.id, currentFrame)}
+              disabled={!canSplit}
+              className="h-8 px-2.5 rounded-md border border-primary/40 bg-primary/10 text-primary text-[11px] font-medium inline-flex items-center gap-1.5 hover:bg-primary/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={canSplit ? "Split selected layer at the timeline marker" : "Move the timeline marker inside the selected layer"}
+            >
+              <Scissors className="w-3.5 h-3.5" /> Split
+            </button>
+            <button
+              onClick={() => removeLayers([selectedLayer.id])}
+              disabled={selectedLayer.locked}
+              className="h-8 px-2.5 rounded-md border border-red-500/40 bg-red-500/10 text-red-400 text-[11px] font-medium inline-flex items-center gap-1.5 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Delete selected layer piece"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete
+            </button>
+          </div>
+        )}
 
         <div className="ml-2 px-2.5 py-1 rounded-md bg-surface-2 border border-border font-mono text-xs">
           <span className="text-accent">{formatFrameTime(currentFrame, fps)}</span>

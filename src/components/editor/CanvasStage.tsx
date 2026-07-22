@@ -443,10 +443,11 @@ export function CanvasStage() {
       // Sync video time to timeline playhead
       if (entry.video && rawLayer.videoDurationSec) {
         const startFrame = getLayerStartFrame(rawLayer);
+        const mediaOffsetFrames = Math.max(0, rawLayer.mediaOffsetFrames ?? 0);
         const playbackRate = Math.max(0.1, Math.min(8, rawLayer.playbackRate ?? 1));
         const t = Math.min(
           rawLayer.videoDurationSec - 0.01,
-          Math.max(0, ((currentFrame - startFrame) / fps) * playbackRate),
+          Math.max(0, ((currentFrame - startFrame) * playbackRate + mediaOffsetFrames) / fps),
         );
         if (Math.abs(entry.video.currentTime - t) > 0.05) {
           try {
@@ -504,10 +505,11 @@ export function CanvasStage() {
       }
       if (entry.video && rawLayer.videoDurationSec) {
         const startFrame = getLayerStartFrame(rawLayer);
+        const mediaOffsetFrames = Math.max(0, rawLayer.mediaOffsetFrames ?? 0);
         const playbackRate = Math.max(0.1, Math.min(8, rawLayer.playbackRate ?? 1));
         const t = Math.min(
           rawLayer.videoDurationSec - 0.01,
-          Math.max(0, ((frame - startFrame) / fps) * playbackRate),
+          Math.max(0, ((frame - startFrame) * playbackRate + mediaOffsetFrames) / fps),
         );
         try {
           entry.video.currentTime = t;
